@@ -1037,7 +1037,7 @@ const LoginPage = ({ handleLogin, showToast, setView, users }: { handleLogin: (e
     // It automatically finds an existing user or prompts to create one.
     const fbUser = users.find(u => u.email === 'hr@thecoffeehouse.vn');
     if (fbUser) {
-        handleLogin(fbUser.email, fbUser.passwordHash);
+        handleLogin(fbUser.email, 'hashed_password_123');
     } else {
         showToast("Tài khoản Facebook chưa được liên kết. Vui lòng đăng ký.");
         setView('signup');
@@ -1303,567 +1303,123 @@ const AdminDashboard = ({ currentUser, setView, users, jobs, reports, actionLogs
 };
 
 const ForbiddenPage = ({ onSimulateTrustedIp }: { onSimulateTrustedIp: () => void }) => (
-    <main className="container mx-auto p-6 flex justify-center items-center" style={{ height: 'calc(100vh - 68px)' }}>
-        <div className="w-full max-w-lg bg-white rounded-lg shadow-lg p-8 text-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+    <main className="container mx-auto p-6 flex justify-center items-center h-[calc(100vh-68px)]">
+        <div className="text-center bg-white p-10 rounded-lg shadow-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-16 w-16 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
             </svg>
-            <h1 className="text-3xl font-bold text-gray-800 mt-4">403 - Forbidden</h1>
-            <p className="text-gray-600 mt-2">Truy cập bị từ chối. Địa chỉ IP của bạn không được phép truy cập vào khu vực này.</p>
-            <p className="text-xs text-gray-500 mt-4">(Simulated IP Check Failed)</p>
-            <button onClick={onSimulateTrustedIp} className="mt-6 bg-gray-200 text-gray-800 px-4 py-2 rounded-md text-sm font-semibold hover:bg-gray-300">Simulate Trusted IP & Retry</button>
+            <h1 className="text-3xl font-bold text-red-600 mt-4 mb-2">403 - Truy cập bị cấm</h1>
+            <p className="text-gray-700 mb-6">Địa chỉ IP của bạn không có trong danh sách được phép truy cập vào khu vực quản trị.</p>
+            <button
+                onClick={onSimulateTrustedIp}
+                className="bg-gray-200 text-gray-800 px-4 py-2 rounded-md text-sm hover:bg-gray-300"
+            >
+                (Dev) Giả lập IP tin cậy
+            </button>
         </div>
     </main>
 );
 
-const AdminLoginPage = ({ handleAdminLogin, handleAdminOtpVerification, loginError, isLocked, lockoutExpireTime, mfaStep }: { handleAdminLogin: (user: string, pass: string) => void, handleAdminOtpVerification: (otp: string) => void, loginError: string | null, isLocked: boolean, lockoutExpireTime: number | null, mfaStep: 'password' | 'otp' }) => {
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
-    const [otp, setOtp] = useState('');
-    const [timeLeft, setTimeLeft] = useState('');
-
-    useEffect(() => {
-        if (isLocked && lockoutExpireTime) {
-            const intervalId = setInterval(() => {
-                const remaining = lockoutExpireTime - Date.now();
-                if (remaining <= 0) {
-                    setTimeLeft('');
-                    clearInterval(intervalId);
-                } else {
-                    const minutes = Math.floor(remaining / 60000);
-                    const seconds = Math.floor((remaining % 60000) / 1000).toString().padStart(2, '0');
-                    setTimeLeft(`${minutes}:${seconds}`);
-                }
-            }, 1000);
-            return () => clearInterval(intervalId);
-        }
-    }, [isLocked, lockoutExpireTime]);
-
-    const handlePasswordSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!isLocked) {
-            handleAdminLogin(username, password);
-        }
-    };
-
-    const handleOtpSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        handleAdminOtpVerification(otp);
-    };
-
-    return (
-        <main className="container mx-auto p-6 flex justify-center items-center" style={{ height: 'calc(100vh - 68px)' }}>
-            <div className="w-full max-w-sm bg-white rounded-lg shadow-lg p-8">
-                <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">Super Admin Login</h1>
-                <p className="text-center text-xs text-gray-500 mb-6">/secure-panel-49cax</p>
-                {isLocked ? (
-                    <div className="text-center bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative" role="alert">
-                        <strong className="font-bold">Tài khoản bị khóa!</strong>
-                        <span className="block mt-1">Đăng nhập thất bại quá nhiều lần.</span>
-                        {timeLeft && <p className="font-mono text-lg mt-2">{timeLeft}</p>}
-                    </div>
-                ) : (
-                    <>
-                        {loginError && <p className="text-red-500 text-sm text-center mb-4">{loginError}</p>}
-                        {mfaStep === 'password' && (
-                             <form onSubmit={handlePasswordSubmit} className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700" htmlFor="admin_username">Admin Email</label>
-                                    <input type="email" id="admin_username" value={username} onChange={e => setUsername(e.target.value)} required className="mt-1 w-full border-gray-300 rounded-md shadow-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700" htmlFor="admin_password">Password</label>
-                                    <input type="password" id="admin_password" value={password} onChange={e => setPassword(e.target.value)} required className="mt-1 w-full border-gray-300 rounded-md shadow-sm" />
-                                </div>
-                                <button type="submit" className="w-full bg-gray-800 text-white py-2 rounded-md font-semibold hover:bg-gray-900">Tiếp tục</button>
-                            </form>
-                        )}
-                        {mfaStep === 'otp' && (
-                             <form onSubmit={handleOtpSubmit} className="space-y-4">
-                                <p className="text-sm text-center text-gray-600">Nhập mã xác thực 6 số từ ứng dụng Authenticator của bạn.</p>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700" htmlFor="admin_otp">Mã xác thực (OTP)</label>
-                                    <input 
-                                        type="text" 
-                                        id="admin_otp" 
-                                        value={otp} 
-                                        onChange={e => setOtp(e.target.value)} 
-                                        required 
-                                        maxLength={6}
-                                        pattern="\d{6}"
-                                        inputMode="numeric"
-                                        className="mt-1 w-full border-gray-300 rounded-md shadow-sm text-center text-lg tracking-[0.5em]" 
-                                    />
-                                </div>
-                                <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-md font-semibold hover:bg-blue-700">Xác thực</button>
-                            </form>
-                        )}
-                    </>
-                )}
-            </div>
-        </main>
-    );
-};
-
-
 // --- MAIN APP COMPONENT ---
 const App = () => {
-    // App State
-    const [view, setView] = useState<AppView>('main');
-    const [currentUser, setCurrentUser] = useState<CurrentUser>(null);
-    const [currentIp, setCurrentIp] = useState('192.168.1.100'); // Simulate a trusted public IP
-
-    // Data State
-    const [users, setUsers] = useState<User[]>(initialUsers);
+    // --- STATE MANAGEMENT ---
     const [jobs, setJobs] = useState<Job[]>(initialJobs);
+    const [users, setUsers] = useState<User[]>(initialUsers);
     const [payments, setPayments] = useState<Payment[]>(initialPayments);
     const [reports, setReports] = useState<Report[]>([]);
     const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
-    
-    // UI State
+
+    const [view, setView] = useState<AppView>('main');
+    const [currentUser, setCurrentUser] = useState<CurrentUser>(null);
+
     const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-    const [editingJob, setEditingJob] = useState<Job | null>(null);
+    const [jobToEdit, setJobToEdit] = useState<Job | null>(null);
+    const [jobToReport, setJobToReport] = useState<Job | null>(null);
     const [isPostingModalOpen, setIsPostingModalOpen] = useState(false);
-    const [filters, setFilters] = useState({ keyword: '', location: '', industry: '', salary: '' });
-    const [isFilteringNear, setIsFilteringNear] = useState(false);
-    const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
-    const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const [jobDataForPayment, setJobDataForPayment] = useState<any>(null);
+
+    const [filters, setFilters] = useState({ keyword: '', industry: '', salary: '' });
+    const [showOnlySaved, setShowOnlySaved] = useState(false);
+    const [savedJobIds, setSavedJobIds] = useState<Set<number>>(new Set());
+
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
     const [userInput, setUserInput] = useState('');
     const [isBotTyping, setIsBotTyping] = useState(false);
     const [isAiReady, setIsAiReady] = useState(false);
-    const [savedJobIds, setSavedJobIds] = useState<Set<number>>(new Set());
-    const [showOnlySaved, setShowOnlySaved] = useState(false);
-    const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-    const [reportingJob, setReportingJob] = useState<Job | null>(null);
-    const [newJobNotifications, setNewJobNotifications] = useState<Job[]>([]);
+    const ai = useRef<GoogleGenAI | null>(null);
+
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+    const [newJobNotifications, setNewJobNotifications] = useState<Job[]>([]);
     const notificationRef = useRef<HTMLDivElement>(null);
-    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-    const [pendingJobForPayment, setPendingJobForPayment] = useState<Omit<Job, 'id' | 'rating' | 'reviewCount' | 'reviews' | 'postedDate' | 'isFeatured'> | null>(null);
-    
-    // Admin Brute-Force & Security State
-    const [adminLoginAttempts, setAdminLoginAttempts] = useState(0);
-    const [isAdminLocked, setIsAdminLocked] = useState(false);
-    const [adminLockoutExpireTime, setAdminLockoutExpireTime] = useState<number | null>(null);
-    const [adminLoginError, setAdminLoginError] = useState<string | null>(null);
-    const [adminMfaStep, setAdminMfaStep] = useState<'password' | 'otp'>('password');
 
+    const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
 
-    const ai = useMemo(() => {
-        try {
-            const instance = new GoogleGenAI({ apiKey: CONFIG.GOOGLE_API_KEY as string });
-            setIsAiReady(true);
-            return instance;
-        } catch (e) {
-            console.error("Failed to initialize GoogleGenAI:", e);
-            showToast("Không thể kết nối với trợ lý AI.");
-            setIsAiReady(false);
-            return null;
-        }
+    const [isIpTrusted, setIsIpTrusted] = useState(process.env.NODE_ENV === 'development'); // Dev default for easier testing
+
+    // --- TOAST NOTIFICATION ---
+    const showToast = useCallback((message: string) => {
+        setToast({ message, id: Date.now() });
+        setTimeout(() => setToast(null), 3000);
     }, []);
     
-    // Check for lockout expiration
-    useEffect(() => {
-        if (isAdminLocked && adminLockoutExpireTime) {
-            const timer = setInterval(() => {
-                if (Date.now() > adminLockoutExpireTime) {
-                    setIsAdminLocked(false);
-                    setAdminLockoutExpireTime(null);
-                    setAdminLoginAttempts(0); // Reset attempts after lockout
-                    setAdminLoginError(null);
-                    setAdminMfaStep('password');
-                    clearInterval(timer);
-                }
-            }, 1000);
-            return () => clearInterval(timer);
-        }
-    }, [isAdminLocked, adminLockoutExpireTime]);
-
-    const showToast = (message: string, duration: number = 3000) => {
-        setToastMessage(message);
-        setTimeout(() => setToastMessage(null), duration);
-    };
-
-    // --- Action Logging ---
+    // --- ADMIN ACTION LOGGING ---
     const logAdminAction = useCallback((action: string) => {
         if (!currentUser || currentUser.role !== 'admin') return;
         const newLog: ActionLog = {
             id: Date.now(),
             adminId: currentUser.id,
             adminName: currentUser.companyName,
-            action,
-            ipAddress: currentIp,
+            action: action,
+            ipAddress: '127.0.0.1', // Simulated IP
             timestamp: new Date().toLocaleString('vi-VN')
         };
         setActionLogs(prev => [newLog, ...prev]);
-    }, [currentUser, currentIp]);
+    }, [currentUser]);
 
-    // --- Auth Handlers ---
-    const handleLogin = (email: string, pass: string): boolean => {
-      // Check if user is trying to use super admin credentials on the wrong form
-      if (email === CONFIG.SUPER_ADMIN.username) {
-          showToast("Đây là tài khoản Super Admin. Vui lòng đăng nhập qua đường dẫn quản trị đặc biệt.", 5000);
-          return false;
-      }
-      const user = users.find(u => u.email === email && u.passwordHash === pass);
-      if (user) {
-        if (user.isLocked) {
-          showToast("Tài khoản này đã bị khóa.");
-          return false;
-        }
-        const { passwordHash, ...currentUserData } = user;
-        setCurrentUser(currentUserData);
-        setView(user.role === 'admin' ? 'adminDashboard' : 'employerDashboard');
-        showToast(`Chào mừng trở lại, ${user.companyName}!`);
-        return true;
-      }
-      showToast("Email hoặc mật khẩu không chính xác.");
-      return false;
-    };
-
-    const handleAdminLogin = (username: string, password: string): void => {
-        if (isAdminLocked) return;
-
-        if (username === CONFIG.SUPER_ADMIN.username && password === CONFIG.SUPER_ADMIN.passwordHash) {
-            setAdminLoginError(null);
-            setAdminMfaStep('otp'); // Move to OTP step instead of logging in
-        } else {
-            const newAttempts = adminLoginAttempts + 1;
-            setAdminLoginAttempts(newAttempts);
-            if (newAttempts >= 5) {
-                setIsAdminLocked(true);
-                setAdminLockoutExpireTime(Date.now() + 30 * 60 * 1000); // 30 minutes
-                setAdminLoginError(null);
-            } else {
-                 setAdminLoginError(`Sai thông tin. Còn ${5 - newAttempts} lần thử.`);
-            }
-        }
-    };
-    
-    const handleAdminOtpVerification = (otp: string): void => {
-        if (otp === CONFIG.SUPER_ADMIN.mfaSecret) {
-            setAdminLoginAttempts(0);
-            setAdminLoginError(null);
-            setAdminMfaStep('password'); // Reset for next login
-            
-            // Log in the first admin user from the list for demonstration
-            const adminUser = users.find(u => u.role === 'admin');
-            if (adminUser) {
-                 const { passwordHash, ...currentUserData } = adminUser;
-                 setCurrentUser(currentUserData);
-                 setView('adminDashboard');
-                 showToast(`Đăng nhập Super Admin thành công!`);
+    // --- EFFECTS ---
+    useEffect(() => {
+        if (CONFIG.GOOGLE_API_KEY) {
+            try {
+                ai.current = new GoogleGenAI({ apiKey: CONFIG.GOOGLE_API_KEY });
+                setIsAiReady(true);
+                setChatMessages([{ sender: 'bot', text: 'Chào bạn! Tôi là trợ lý AI của Việc Tốt. Tôi có thể giúp gì cho bạn hôm nay?' }]);
+            } catch (error) {
+                console.error("Failed to initialize Google AI:", error);
+                setIsAiReady(false);
             }
         } else {
-            setAdminLoginError("Mã OTP không chính xác.");
+            console.warn("Google API Key is missing.");
         }
-    };
+    }, []);
 
-    const handleLogout = () => {
-      setCurrentUser(null);
-      setView('main');
-      window.location.hash = ''; // Clear hash on logout
-      showToast("Bạn đã đăng xuất.");
-    };
-    
-    const handleSignup = (data: Omit<User, 'id' | 'role' | 'passwordHash' | 'isLocked' > & {password: string}): boolean => {
-      if (users.some(u => u.email === data.email)) {
-        showToast("Email này đã được sử dụng.");
-        return false;
-      }
-      const newUser: User = {
-        ...data,
-        id: Date.now(),
-        role: 'employer',
-        passwordHash: data.password, // In real app, hash this with bcrypt before sending to server
-        isLocked: false,
-      };
-      setUsers(prev => [...prev, newUser]);
-      const { passwordHash, ...currentUserData } = newUser;
-      setCurrentUser(currentUserData);
-      setView('employerDashboard');
-      showToast(`Đăng ký thành công! Chào mừng, ${newUser.companyName}!`);
-      return true;
-    };
-    
-    // --- Event Handlers ---
-    const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setFilters(prev => ({ ...prev, [name]: value }));
-    };
-
-    const haversineDistance = (coords1: [number, number], coords2: [number, number]) => {
-        const R = 6371; // Earth's radius in km
-        const dLat = (coords2[0] - coords1[0]) * Math.PI / 180;
-        const dLon = (coords2[1] - coords1[1]) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(coords1[0] * Math.PI / 180) * Math.cos(coords2[0] * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
-    };
-    
-    const filteredJobs = useMemo(() => {
-        const baseJobs = showOnlySaved
-            ? jobs.filter(job => savedJobIds.has(job.id))
-            : jobs;
-
-        const filtered = baseJobs.filter(job => {
-            const keywordMatch = filters.keyword === '' || job.title.toLowerCase().includes(filters.keyword.toLowerCase()) || job.company.toLowerCase().includes(filters.keyword.toLowerCase()) || job.location.toLowerCase().includes(filters.keyword.toLowerCase());
-            const locationMatch = filters.location === '' || job.location.includes(filters.location);
-            const industryMatch = filters.industry === '' || job.industry === filters.industry;
-            const salaryMatch = filters.salary === '' || (() => {
-                const jobSalaryString = job.salary.split(' ')[0]; 
-                const jobSalaryAvg = parseFloat(jobSalaryString);
-                if (isNaN(jobSalaryAvg)) return true; // For "Thoả thuận"
-                const filterRange = filters.salary.split('-').map(s => parseInt(s, 10));
-                if (filterRange.length === 1) return jobSalaryAvg < filterRange[0];
-                return jobSalaryAvg >= filterRange[0] && jobSalaryAvg <= filterRange[1];
-            })();
-            const nearMeMatch = !isFilteringNear || (userLocation && haversineDistance(userLocation, job.workLocationGps) <= 10);
-            return keywordMatch && locationMatch && industryMatch && salaryMatch && nearMeMatch;
-        });
-
-        // Sort: featured jobs first, then by date (implicitly, since new jobs are prepended)
-        return filtered.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
-
-    }, [filters, isFilteringNear, userLocation, jobs, showOnlySaved, savedJobIds]);
-
-    const handleSendMessage = useCallback(async () => {
-        if (!userInput.trim() || !ai || isBotTyping) return;
-        const newMessages: ChatMessage[] = [...chatMessages, { sender: 'user', text: userInput }];
-        setChatMessages(newMessages);
-        const currentInput = userInput;
-        setUserInput('');
-        setIsBotTyping(true);
-
-        try {
-            let prompt = `Bạn là trợ lý AI 'Việc Tốt Bot'. Nhiệm vụ của bạn là hỗ trợ người dùng tìm việc. Hãy trả lời ngắn gọn, chuyên nghiệp và thân thiện.`;
-            if (selectedJob) {
-                prompt += `\nNgười dùng đang xem công việc: "${selectedJob.title}" tại "${selectedJob.company}". Bạn đang đóng vai trò là cầu nối với nhà tuyển dụng này. Hãy trả lời các câu hỏi dựa trên thông tin có sẵn: ${JSON.stringify(selectedJob)}`;
-            }
-             prompt += `\nCâu hỏi của người dùng: "${currentInput}"`;
-            
-            const response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
-            setChatMessages([...newMessages, { sender: 'bot', text: response.text }]);
-        } catch (error) {
-            console.error("Gemini API error:", error);
-            setChatMessages([...newMessages, { sender: 'bot', text: "Xin lỗi, tôi đang gặp sự cố kết nối. Vui lòng thử lại sau." }]);
-        } finally {
-            setIsBotTyping(false);
-        }
-    }, [userInput, ai, isBotTyping, chatMessages, selectedJob, setChatMessages, setUserInput, setIsBotTyping]);
-    
-    const handleAddNewReview = (jobId: number, reviewData: Omit<Review, 'status'>) => {
-        const newReview: Review = { ...reviewData, status: 'pending' };
-        setJobs(prevJobs => prevJobs.map(job => {
-            if (job.id === jobId) {
-                const newReviews = [newReview, ...job.reviews]; // Prepend new review
-                return { ...job, reviews: newReviews }; // Rating and count will only update on approval
-            }
-            return job;
-        }));
-        // DO NOT update selectedJob review immediately, it will show up after approval
-        showToast("Đánh giá của bạn đã được gửi và đang chờ duyệt!");
-    };
-
-    const handleProceedToPost = (jobData: Omit<Job, 'id' | 'rating' | 'reviewCount' | 'reviews' | 'postedDate' | 'isFeatured' | 'companyId'>, isFeatured: boolean) => {
-        setIsPostingModalOpen(false);
-        if (!currentUser) {
-            showToast("Vui lòng đăng nhập để đăng tin.");
-            setView('login');
-            return;
-        }
-
-        const jobWithCompanyId = { ...jobData, companyId: currentUser.id };
-        if (isFeatured) {
-            setPendingJobForPayment(jobWithCompanyId);
-            setIsPaymentModalOpen(true);
-        } else {
-            const newJob: Job = {
-                ...jobWithCompanyId,
-                id: Date.now(),
-                rating: 0,
-                reviewCount: 0,
-                reviews: [],
-                postedDate: "Vừa xong",
-                isFeatured: false,
-            };
-            setJobs(prevJobs => [newJob, ...prevJobs]);
-            setNewJobNotifications(prev => [newJob, ...prev].slice(0, 5));
-            showToast("Đăng tin tuyển dụng thành công!");
-        }
-    };
-    
-    const handlePaymentSuccess = () => {
-        if (!pendingJobForPayment || !currentUser) return;
-        const newJob: Job = {
-            ...pendingJobForPayment,
-            id: Date.now(),
-            rating: 0,
-            reviewCount: 0,
-            reviews: [],
-            postedDate: "Vừa xong",
-            isFeatured: true,
+    // FIX FOR VERCEL DEPLOYMENT: Prevents "document is not defined" error during build.
+    useEffect(() => {
+        const style = document.createElement('style');
+        style.innerHTML = `
+          .prose {
+            max-width: 100% !important;
+          }
+        `;
+        document.head.appendChild(style);
+        return () => {
+          document.head.removeChild(style);
         };
-        setJobs(prevJobs => [newJob, ...prevJobs]);
-        const newPayment: Payment = {
-            id: `TXN${Date.now()}`,
-            userId: currentUser.id,
-            date: new Date().toISOString().split('T')[0],
-            service: 'Tin Nổi Bật',
-            amount: 99000,
-            status: 'Completed'
-        };
-        setPayments(prev => [newPayment, ...prev]);
-        setNewJobNotifications(prev => [newJob, ...prev].slice(0, 5));
-        setIsPaymentModalOpen(false);
-        setPendingJobForPayment(null);
-        showToast("Thanh toán và đăng tin nổi bật thành công!", 5000);
-    };
+    }, []);
 
-    const toggleSaveJob = (jobId: number) => {
-        setSavedJobIds(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(jobId)) {
-                newSet.delete(jobId);
-            } else {
-                newSet.add(jobId);
-            }
-            return newSet;
-        });
-    };
-
-    const handleOpenReportModal = (job: Job) => {
-        setReportingJob(job);
-        setIsReportModalOpen(true);
-    };
-    
-    const handleSubmitReport = (reason: string, details: string) => {
-        if (!reportingJob) return;
-        const newReport: Report = {
-            id: Date.now(),
-            jobId: reportingJob.id,
-            jobTitle: reportingJob.title,
-            reason,
-            details,
-            status: 'pending'
-        };
-        setReports(prev => [newReport, ...prev]);
-        setIsReportModalOpen(false);
-        setReportingJob(null);
-        showToast("Báo cáo của bạn đã được gửi. Cảm ơn bạn!");
-    };
-
-    const handleToggleNotifications = () => {
-        setIsNotificationOpen(prev => !prev);
-    };
-
-    const handleOpenNotificationJob = (job: Job) => {
-        setSelectedJob(job);
-        setIsNotificationOpen(false);
-    };
-
-    // --- Admin handlers ---
-    const toggleUserLock = (userId: number) => {
-        let userLocked: User | undefined;
-        setUsers(users.map(u => {
-            if (u.id === userId) {
-                userLocked = u;
-                return { ...u, isLocked: !u.isLocked };
-            }
-            return u;
-        }));
-        if(userLocked) {
-            logAdminAction(`${userLocked.isLocked ? 'Unlocked' : 'Locked'} user: ${userLocked.email} (ID: ${userId})`);
-        }
-        showToast("Cập nhật trạng thái tài khoản thành công.");
-    };
-
-    const deleteJob = (jobId: number) => {
-        const jobToDelete = jobs.find(j => j.id === jobId);
-         setJobs(jobs.filter(j => j.id !== jobId));
-         if(jobToDelete) {
-            logAdminAction(`Deleted job: "${jobToDelete.title}" (ID: ${jobId})`);
-         }
-         showToast("Đã xóa vĩnh viễn tin tuyển dụng.");
-    };
-
-    const handleDeleteJobByEmployer = (jobId: number) => {
-        const jobToDelete = jobs.find(j => j.id === jobId);
-        if (!currentUser || !jobToDelete || jobToDelete.companyId !== currentUser.id) {
-            showToast("Bạn không có quyền xóa tin đăng này.");
-            return;
-        }
-        if (window.confirm('Bạn có chắc chắn muốn xóa tin đăng này không?')) {
-            setJobs(prev => prev.filter(j => j.id !== jobId));
-            showToast("Đã xóa tin đăng thành công.");
-        }
-    };
-    
-    const handleOpenEditModal = (job: Job) => {
-        setEditingJob(job);
-    };
-
-    const handleUpdateJob = (updatedJob: Job) => {
-        setJobs(prevJobs => prevJobs.map(j => j.id === updatedJob.id ? updatedJob : j));
-        logAdminAction(`Edited job: "${updatedJob.title}" (ID: ${updatedJob.id})`);
-    };
-
-    const handleReportAction = (reportId: number, action: 'resolve') => {
-        if (action === 'resolve') {
-            setReports(prev => prev.filter(r => r.id !== reportId));
-            showToast("Báo cáo đã được xử lý.");
-        }
-    };
-    
-    const handleReviewStatusChange = (jobId: number, reviewIndex: number, newStatus: Review['status']) => {
-        setJobs(prevJobs => prevJobs.map(job => {
-            if (job.id === jobId) {
-                const newReviews = [...job.reviews];
-                newReviews[reviewIndex].status = newStatus;
-                
-                // Recalculate rating based on visible reviews only
-                const visibleReviews = newReviews.filter(r => r.status === 'visible');
-                const newRating = visibleReviews.length > 0
-                    ? visibleReviews.reduce((acc, r) => acc + r.rating, 0) / visibleReviews.length
-                    : 0;
-                const newReviewCount = visibleReviews.length;
-
-                return { ...job, reviews: newReviews, rating: parseFloat(newRating.toFixed(1)), reviewCount: newReviewCount };
-            }
-            return job;
-        }));
-        showToast(`Đã cập nhật trạng thái đánh giá thành: ${newStatus === 'visible' ? 'Đã duyệt' : 'Đã ẩn'}`);
-    };
-
-
-    // --- Effects for routing and event listeners ---
     useEffect(() => {
         const handleHashChange = () => {
-            // Updated check to be more robust against missing slashes
-            if (window.location.hash.includes('secure-panel-49cax')) {
-                if (!CONFIG.TRUSTED_IPS.includes(currentIp)) {
-                    if (view !== 'forbidden') setView('forbidden');
-                // Prevent kicking a logged-in admin back to the login page if they refresh
-                } else if (view !== 'adminDashboard' && view !== 'adminLogin') {
-                    setView('adminLogin');
-                }
-            } else {
-                // If the user navigates away from an admin-only page
-                if (view === 'adminLogin' || view === 'adminDashboard' || view === 'forbidden') {
-                    setView('main');
-                }
+            if (window.location.hash === '#secure-panel-49cax' && isIpTrusted) {
+                setView('adminLogin');
+            } else if (window.location.hash === '#secure-panel-49cax' && !isIpTrusted) {
+                setView('forbidden');
             }
         };
-
         window.addEventListener('hashchange', handleHashChange);
-        handleHashChange(); // Check hash on initial load
-
+        handleHashChange();
         return () => window.removeEventListener('hashchange', handleHashChange);
-    }, [currentIp, view]); // Add `view` to dependency array to fix stale state issue on navigation
+    }, [isIpTrusted]);
 
-    // Close notification dropdown on outside click
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
@@ -1871,48 +1427,287 @@ const App = () => {
             }
         };
         document.addEventListener("mousedown", handleClickOutside);
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
+        return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    const uniqueIndustries = [...new Set(initialJobs.map(job => job.industry))];
+    // --- DATA & FILTERS ---
+    const uniqueIndustries = useMemo(() => [...new Set(initialJobs.map(j => j.industry))], []);
+
+    const filteredJobs = useMemo(() => {
+        let jobsToFilter = showOnlySaved ? jobs.filter(j => savedJobIds.has(j.id)) : jobs;
+        
+        return jobsToFilter.filter(job => {
+            const keyword = filters.keyword.toLowerCase();
+            const keywordMatch = keyword === '' ||
+                job.title.toLowerCase().includes(keyword) ||
+                job.company.toLowerCase().includes(keyword) ||
+                job.location.toLowerCase().includes(keyword);
+            
+            const industryMatch = filters.industry === '' || job.industry === filters.industry;
+            
+            const salaryMatch = filters.salary === '' || (
+                filters.salary === '0-5' && parseInt(job.salary) <= 5
+            ) || (
+                filters.salary === '5-10' && parseInt(job.salary) > 5 && parseInt(job.salary) <= 10
+            ) || (
+                filters.salary === '10-15' && parseInt(job.salary) > 10 && parseInt(job.salary) <= 15
+            );
+
+            return keywordMatch && industryMatch && salaryMatch;
+        }).sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
+    }, [jobs, filters, showOnlySaved, savedJobIds]);
+
+    // --- HANDLERS ---
+    const handleFilterChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setFilters(prev => ({ ...prev, [name]: value }));
+    }, []);
+
+    const toggleSaveJob = useCallback((jobId: number) => {
+        setSavedJobIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(jobId)) {
+                newSet.delete(jobId);
+                showToast("Đã bỏ lưu công việc.");
+            } else {
+                newSet.add(jobId);
+                showToast("Đã lưu công việc thành công!");
+            }
+            return newSet;
+        });
+    }, [showToast]);
+
+    const handleLogin = useCallback((email: string, pass: string): boolean => {
+        // Simplified auth for mock data
+        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+        if (user && (user.passwordHash === 'hashed_password_123' || user.passwordHash === 'admin_pass')) {
+             if (user.isLocked) {
+                showToast("Tài khoản của bạn đã bị khóa.");
+                return false;
+            }
+            setCurrentUser(user);
+            setView(user.role === 'admin' ? 'adminDashboard' : 'main');
+            showToast(`Chào mừng ${user.companyName}!`);
+            return true;
+        }
+        showToast("Email hoặc mật khẩu không chính xác.");
+        return false;
+    }, [users, showToast]);
+
+    const handleLogout = useCallback(() => {
+        setCurrentUser(null);
+        setView('main');
+        showToast("Bạn đã đăng xuất.");
+    }, [showToast]);
+
+    const handleSignup = useCallback((data: any): boolean => {
+        if (users.some(u => u.email.toLowerCase() === data.email.toLowerCase())) {
+            showToast("Email này đã được đăng ký.");
+            return false;
+        }
+        const newUser: User = {
+            id: Date.now(),
+            email: data.email,
+            passwordHash: 'hashed_password_123',
+            companyName: data.companyName,
+            phone: data.phone,
+            role: 'employer',
+            isLocked: false,
+        };
+        setUsers(prev => [...prev, newUser]);
+        showToast("Đăng ký thành công! Vui lòng đăng nhập.");
+        setView('login');
+        return true;
+    }, [users, showToast]);
     
-    const renderContent = () => {
-        switch(view) {
-            case 'adminLogin': return <AdminLoginPage handleAdminLogin={handleAdminLogin} handleAdminOtpVerification={handleAdminOtpVerification} loginError={adminLoginError} isLocked={isAdminLocked} lockoutExpireTime={adminLockoutExpireTime} mfaStep={adminMfaStep} />;
-            case 'forbidden': return <ForbiddenPage onSimulateTrustedIp={() => setCurrentIp(CONFIG.TRUSTED_IPS[0])} />;
-            case 'login': return <LoginPage handleLogin={handleLogin} showToast={showToast} setView={setView} users={users} />;
-            case 'signup': return <SignupPage handleSignup={handleSignup} setView={setView} showToast={showToast} />;
-            case 'employerDashboard': return <EmployerDashboard currentUser={currentUser} jobs={jobs} payments={payments} handleEditJob={handleOpenEditModal} handleDeleteJob={handleDeleteJobByEmployer} />;
-            case 'adminDashboard': return <AdminDashboard currentUser={currentUser} setView={setView} users={users} jobs={jobs} reports={reports} actionLogs={actionLogs} toggleUserLock={toggleUserLock} deleteJob={deleteJob} showToast={showToast} handleOpenEditModal={handleOpenEditModal} handleReportAction={handleReportAction} handleReviewStatusChange={handleReviewStatusChange} />;
-            case 'main':
-            default: return <MainContent filters={filters} handleFilterChange={handleFilterChange} uniqueIndustries={uniqueIndustries} showOnlySaved={showOnlySaved} setShowOnlySaved={setShowOnlySaved} filteredJobs={filteredJobs} setSelectedJob={setSelectedJob} savedJobIds={savedJobIds} toggleSaveJob={toggleSaveJob} />;
+    const handlePostJob = (jobData: any, isFeatured: boolean) => {
+        if (!currentUser) return;
+
+        const newJob: Job = {
+            ...jobData,
+            id: Date.now(),
+            companyId: currentUser.id,
+            rating: 0,
+            reviewCount: 0,
+            reviews: [],
+            postedDate: "Vừa xong",
+            isFeatured: false, // Will be set after payment if applicable
+        };
+
+        if (isFeatured) {
+            setJobDataForPayment({ ...newJob, isFeatured: true });
+        } else {
+            setJobs(prev => [newJob, ...prev]);
+            setNewJobNotifications(prev => [newJob, ...prev].slice(0, 5));
+            setIsPostingModalOpen(false);
+            showToast("Đăng tin thành công!");
         }
     };
     
+    const handlePaymentSuccess = () => {
+        setJobs(prev => [jobDataForPayment, ...prev]);
+        setPayments(prev => [...prev, {
+            id: `TXN${Date.now()}`,
+            userId: currentUser!.id,
+            date: new Date().toISOString().split('T')[0],
+            service: 'Tin Nổi Bật',
+            amount: 99000,
+            status: 'Completed',
+        }]);
+        setNewJobNotifications(prev => [jobDataForPayment, ...prev].slice(0, 5));
+        setJobDataForPayment(null);
+        setIsPostingModalOpen(false);
+        showToast("Thanh toán và đăng tin nổi bật thành công!");
+    };
+
+    const handleAddNewReview = useCallback((jobId: number, review: Omit<Review, 'status'>) => {
+        setJobs(prevJobs => prevJobs.map(job => {
+            if (job.id === jobId) {
+                return { ...job, reviews: [{...review, status: 'pending'}, ...job.reviews] };
+            }
+            return job;
+        }));
+        showToast("Cảm ơn bạn đã gửi đánh giá! Đánh giá của bạn đang chờ duyệt.");
+    }, [showToast]);
+
+    const handleSendMessage = async () => {
+        if (!userInput.trim() || !ai.current) return;
+        const newUserMessage: ChatMessage = { sender: 'user', text: userInput };
+        setChatMessages(prev => [...prev, newUserMessage]);
+        setUserInput('');
+        setIsBotTyping(true);
+
+        try {
+            const prompt = selectedJob 
+                ? `Context: User is asking about the job "${selectedJob.title}" at "${selectedJob.company}".\nJob Description: ${selectedJob.description}\nUser question: "${userInput}"\nAnswer in Vietnamese.`
+                : `User question: "${userInput}"\nAnswer in Vietnamese.`;
+
+            const response = await ai.current.models.generateContent({
+              model: 'gemini-2.5-flash',
+              contents: prompt,
+            });
+            const botMessage: ChatMessage = { sender: 'bot', text: response.text };
+            setChatMessages(prev => [...prev, botMessage]);
+        } catch (error) {
+            console.error("Gemini API error:", error);
+            const errorMessage: ChatMessage = { sender: 'bot', text: 'Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại.' };
+            setChatMessages(prev => [...prev, errorMessage]);
+        } finally {
+            setIsBotTyping(false);
+        }
+    };
+    
+    const handleOpenNotificationJob = (job: Job) => {
+        setSelectedJob(job);
+        setIsNotificationOpen(false);
+    };
+    
+    // --- ADMIN HANDLERS ---
+    const toggleUserLock = useCallback((userId: number) => {
+        setUsers(prev => prev.map(user => user.id === userId ? { ...user, isLocked: !user.isLocked } : user));
+        const user = users.find(u => u.id === userId);
+        if (user) {
+            logAdminAction(`${user.isLocked ? 'Mở khóa' : 'Khóa'} người dùng ${user.email} (ID: ${userId})`);
+            showToast(`Đã ${user.isLocked ? 'mở khóa' : 'khóa'} tài khoản.`);
+        }
+    }, [users, logAdminAction, showToast]);
+
+    const deleteJob = useCallback((jobId: number) => {
+        if (window.confirm("Bạn có chắc chắn muốn xóa vĩnh viễn tin đăng này không?")) {
+            setJobs(prev => prev.filter(job => job.id !== jobId));
+            logAdminAction(`Xóa tin đăng ID: ${jobId}`);
+            showToast("Đã xóa tin đăng.");
+        }
+    }, [logAdminAction, showToast]);
+    
+    const handleUpdateJob = (updatedJob: Job) => {
+        setJobs(prev => prev.map(job => job.id === updatedJob.id ? updatedJob : job));
+        logAdminAction(`Cập nhật tin đăng "${updatedJob.title}" (ID: ${updatedJob.id})`);
+    };
+
+    const handleReportAction = (reportId: number) => {
+        setReports(prev => prev.filter(r => r.id !== reportId));
+        logAdminAction(`Xử lý báo cáo ID: ${reportId}`);
+        showToast("Đã xử lý báo cáo.");
+    };
+
+    const handleReviewStatusChange = (jobId: number, reviewIndex: number, newStatus: Review['status']) => {
+        setJobs(prev => prev.map(job => {
+            if (job.id === jobId) {
+                const newReviews = [...job.reviews];
+                newReviews[reviewIndex].status = newStatus;
+                return { ...job, reviews: newReviews };
+            }
+            return job;
+        }));
+        logAdminAction(`Thay đổi trạng thái đánh giá (Job ID: ${jobId}, Review Index: ${reviewIndex}) thành ${newStatus}`);
+    };
+    
+    const handleSubmitReport = (reason: string, details: string) => {
+        if (!jobToReport) return;
+        const newReport: Report = {
+            id: Date.now(),
+            jobId: jobToReport.id,
+            jobTitle: jobToReport.title,
+            reason,
+            details,
+            status: 'pending'
+        };
+        setReports(prev => [newReport, ...prev]);
+        showToast("Cảm ơn bạn đã báo cáo. Chúng tôi sẽ xem xét sớm nhất có thể.");
+        setJobToReport(null);
+    };
+
+    // --- RENDER LOGIC ---
+    const renderView = () => {
+        switch (view) {
+            case 'login':
+                return <LoginPage handleLogin={handleLogin} showToast={showToast} setView={setView} users={users} />;
+            case 'signup':
+                return <SignupPage handleSignup={handleSignup} setView={setView} showToast={showToast} />;
+            case 'employerDashboard':
+                return <EmployerDashboard currentUser={currentUser} jobs={jobs} payments={payments} handleEditJob={setJobToEdit} handleDeleteJob={deleteJob} />;
+            case 'adminDashboard':
+                return <AdminDashboard currentUser={currentUser} setView={setView} users={users} jobs={jobs} reports={reports} actionLogs={actionLogs} toggleUserLock={toggleUserLock} deleteJob={deleteJob} showToast={showToast} handleOpenEditModal={setJobToEdit} handleReportAction={handleReportAction} handleReviewStatusChange={handleReviewStatusChange} />;
+            case 'adminLogin':
+                return <LoginPage handleLogin={handleLogin} showToast={showToast} setView={setView} users={users} />; // Simplified, can be a separate component
+            case 'forbidden':
+                return <ForbiddenPage onSimulateTrustedIp={() => setIsIpTrusted(true)} />;
+            case 'main':
+            default:
+                return <MainContent filters={filters} handleFilterChange={handleFilterChange} uniqueIndustries={uniqueIndustries} showOnlySaved={showOnlySaved} setShowOnlySaved={setShowOnlySaved} filteredJobs={filteredJobs} setSelectedJob={setSelectedJob} savedJobIds={savedJobIds} toggleSaveJob={toggleSaveJob} />;
+        }
+    };
+
     return (
-        <div className="min-h-screen font-sans bg-gray-50">
-            {view !== 'adminLogin' && view !== 'forbidden' && (
-                <Header 
-                    currentUser={currentUser} 
-                    setView={setView} 
-                    handleLogout={handleLogout} 
-                    notificationRef={notificationRef} 
-                    handleToggleNotifications={handleToggleNotifications} 
-                    isNotificationOpen={isNotificationOpen}
-                    newJobNotifications={newJobNotifications}
-                    handleOpenNotificationJob={handleOpenNotificationJob}
-                    setIsPostingModalOpen={setIsPostingModalOpen}
+        <>
+            <Header
+                currentUser={currentUser}
+                setView={setView}
+                handleLogout={handleLogout}
+                notificationRef={notificationRef}
+                handleToggleNotifications={() => setIsNotificationOpen(!isNotificationOpen)}
+                isNotificationOpen={isNotificationOpen}
+                newJobNotifications={newJobNotifications}
+                handleOpenNotificationJob={handleOpenNotificationJob}
+                setIsPostingModalOpen={setIsPostingModalOpen}
+            />
+            {renderView()}
+            {selectedJob && (
+                <JobDetailModal
+                    job={selectedJob}
+                    onClose={() => setSelectedJob(null)}
+                    handleAddNewReview={handleAddNewReview}
+                    showToast={showToast}
+                    setIsChatOpen={setIsChatOpen}
+                    handleOpenReportModal={setJobToReport}
+                    googleApiKey={CONFIG.GOOGLE_API_KEY}
                 />
             )}
-            {renderContent()}
-
-            {selectedJob && <JobDetailModal job={selectedJob} onClose={() => setSelectedJob(null)} handleAddNewReview={handleAddNewReview} showToast={showToast} setIsChatOpen={setIsChatOpen} handleOpenReportModal={handleOpenReportModal} googleApiKey={CONFIG.GOOGLE_API_KEY} />}
-            {isPostingModalOpen && <JobPostingModal onClose={() => setIsPostingModalOpen(false)} onPost={handleProceedToPost} currentUser={currentUser} />}
-            {isPaymentModalOpen && pendingJobForPayment && <PaymentModal jobData={pendingJobForPayment} onClose={() => setIsPaymentModalOpen(false)} onSuccess={handlePaymentSuccess} showToast={showToast} />}
-            {isReportModalOpen && reportingJob && <ReportJobModal job={reportingJob} onClose={() => setIsReportModalOpen(false)} onSubmit={handleSubmitReport} showToast={showToast} />}
-            {editingJob && <EditJobModal job={editingJob} onClose={() => setEditingJob(null)} onUpdate={handleUpdateJob} showToast={showToast} />}
+            {jobToEdit && <EditJobModal job={jobToEdit} onClose={() => setJobToEdit(null)} onUpdate={handleUpdateJob} showToast={showToast} />}
+            {jobToReport && <ReportJobModal job={jobToReport} onClose={() => setJobToReport(null)} onSubmit={handleSubmitReport} showToast={showToast} />}
+            {isPostingModalOpen && <JobPostingModal currentUser={currentUser} onClose={() => setIsPostingModalOpen(false)} onPost={handlePostJob} />}
+            {jobDataForPayment && <PaymentModal jobData={jobDataForPayment} onClose={() => setJobDataForPayment(null)} onSuccess={handlePaymentSuccess} showToast={showToast} />}
             <ChatWidget 
                 isChatOpen={isChatOpen}
                 setIsChatOpen={setIsChatOpen}
@@ -1924,27 +1719,13 @@ const App = () => {
                 isAiReady={isAiReady}
                 selectedJob={selectedJob}
             />
-            {toastMessage && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-md shadow-lg z-50 animate-fade-in-out">{toastMessage}</div>}
-        </div>
+            {toast && (
+                <div className="fixed top-5 right-5 bg-gray-800 text-white px-4 py-2 rounded-md shadow-lg z-50 animate-fade-in-out">
+                    {toast.message}
+                </div>
+            )}
+        </>
     );
 };
 
 export default App;
-// Add a simple fade-in-out animation for the toast
-const style = document.createElement('style');
-style.textContent = `
-  @keyframes fade-in-out {
-    0% { opacity: 0; transform: translate(-50%, 10px); }
-    15% { opacity: 1; transform: translate(-50%, 0); }
-    85% { opacity: 1; transform: translate(-50%, 0); }
-    100% { opacity: 0; transform: translate(-50%, 10px); }
-  }
-  .animate-fade-in-out {
-    animation: fade-in-out 3s ease-in-out forwards;
-  }
-  .prose ul {
-      margin-top: 0.5em;
-      margin-bottom: 0.5em;
-  }
-`;
-document.head.appendChild(style);
