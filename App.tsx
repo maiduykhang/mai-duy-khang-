@@ -135,7 +135,13 @@ const geocodeAddress = async (address: string): Promise<[number, number] | null>
         const data = await response.json();
 
         if (data.status === 'OK' && data.results.length > 0) {
-            const location = data.results[0].geometry.location;
+            const result = data.results[0];
+            // Stricter check: Reject if Google indicates a partial match.
+            if (result.partial_match) {
+                console.warn(`Geocoding returned a partial match for address "${address}". Rejecting as ambiguous.`);
+                return null;
+            }
+            const location = result.geometry.location;
             return [location.lat, location.lng];
         } else {
             console.warn(`Geocoding failed for address "${address}". Status: ${data.status}`);
@@ -198,6 +204,18 @@ const CopyIcon = ({ className = "w-5 h-5", ...props }: { className?: string; [ke
         <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
     </svg>
 );
+
+const InfoIcon = ({ tooltipText }: { tooltipText: string }) => (
+  <div className="relative group ml-1">
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400 cursor-pointer" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <div className="absolute bottom-full -left-1/2 mb-2 w-64 bg-gray-800 text-white text-xs rounded py-2 px-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10 shadow-lg">
+      {tooltipText}
+    </div>
+  </div>
+);
+
 
 const Rating = ({ rating, count }: { rating: number; count?: number }) => {
     const stars = [];
@@ -324,8 +342,7 @@ const ChatWidget = ({ isChatOpen, setIsChatOpen, chatMessages, userInput, setUse
 
 // --- APP SUB-COMPONENTS ---
 // Moved components outside of the main App component to prevent re-definition on each render,
-// which fixes the bug of input fields losing focus.
-
+// which fixes the bug of input fields losing focus and potential app crashes (white screen).
 const Header = ({ currentUser, handleNavigate, handleLogout, notificationRef, handleToggleNotifications, isNotificationOpen, newJobNotifications, handleOpenNotificationJob, setIsPostingModalOpen }: { currentUser: CurrentUser, handleNavigate: (view: AppView) => void, handleLogout: () => void, notificationRef: React.RefObject<HTMLDivElement>, handleToggleNotifications: () => void, isNotificationOpen: boolean, newJobNotifications: Job[], handleOpenNotificationJob: (job: Job) => void, setIsPostingModalOpen: React.Dispatch<React.SetStateAction<boolean>> }) => (
     <header className="bg-white shadow-md sticky top-0 z-20">
         <nav className="container mx-auto px-6 py-3 flex justify-between items-center">
@@ -635,7 +652,7 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
     };
 
     const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
+        if (typeof window !== 'undefined' && e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
             const previewUrl = URL.createObjectURL(file);
             setLogoPreview(previewUrl);
@@ -646,10 +663,15 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const errors: any = {};
-        
+        const urlRegex = /http/i;
+
         // --- Address & Other Validations ---
         if (!formData.location) errors.location = "Bắt buộc.";
+        else if (urlRegex.test(formData.location)) errors.location = "Vui lòng chỉ nhập địa chỉ hoặc Plus Code, không nhập URL.";
+
         if (!formData.interviewAddress) errors.interviewAddress = "Bắt buộc.";
+        else if (urlRegex.test(formData.interviewAddress)) errors.interviewAddress = "Vui lòng chỉ nhập địa chỉ hoặc Plus Code, không nhập URL.";
+        
         if (!formData.recruiterEmail) errors.recruiterEmail = "Bắt buộc.";
         if (!formData.salary) errors.salary = "Bắt buộc.";
         if (!formData.benefits) errors.benefits = "Bắt buộc.";
@@ -725,7 +747,10 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
                             {formErrors.benefits && <p className="text-red-500 text-xs mt-1">{formErrors.benefits}</p>}
                         </div>
                         <div className="md:col-span-2">
-                             <label htmlFor="location" className="block text-sm font-medium text-gray-800 mb-1">Địa chỉ Nơi làm việc <span className="text-red-500">*</span></label>
+                            <label htmlFor="location" className="flex items-center text-sm font-medium text-gray-800 mb-1">
+                                <span>Địa chỉ Nơi làm việc <span className="text-red-500">*</span></span>
+                                <InfoIcon tooltipText="For reliable map pinning, please enter a Plus Code or a complete street address (e.g., House Number, Street, Ward, District)." />
+                            </label>
                              <div className="relative">
                                 <input type="text" name="location" id="location" value={formData.location} onChange={handleChange} className="w-full border-gray-300 rounded-md" placeholder="Enter Street Address or Plus Code (e.g., Q2C2+2R)" />
                                 <a href="https://maps.google.com/pluscodes/" target="_blank" rel="noopener noreferrer" className="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300">Get Plus Code</a>
@@ -733,7 +758,10 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
                             {formErrors.location && <p className="text-red-500 text-xs mt-1">{formErrors.location}</p>}
                         </div>
                         <div className="md:col-span-2">
-                            <label htmlFor="interviewAddress" className="block text-sm font-medium text-gray-800 mb-1">Địa chỉ Phỏng vấn <span className="text-red-500">*</span></label>
+                            <label htmlFor="interviewAddress" className="flex items-center text-sm font-medium text-gray-800 mb-1">
+                                <span>Địa chỉ Phỏng vấn <span className="text-red-500">*</span></span>
+                                <InfoIcon tooltipText="For reliable map pinning, please enter a Plus Code or a complete street address (e.g., House Number, Street, Ward, District)." />
+                            </label>
                              <div className="relative">
                                 <input type="text" name="interviewAddress" id="interviewAddress" value={formData.interviewAddress} onChange={handleChange} className="w-full border-gray-300 rounded-md" placeholder="Enter Street Address or Plus Code (e.g., Q2FX+67)"/>
                                 <a href="https://maps.google.com/pluscodes/" target="_blank" rel="noopener noreferrer" className="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300">Get Plus Code</a>
@@ -776,8 +804,10 @@ const PaymentModal = ({ jobData, onClose, onSuccess, showToast }: { jobData: any
     const transferContent = useMemo(() => `WH ${Date.now()}`, []);
     
     const handleCopy = (text: string) => {
-        navigator.clipboard.writeText(text);
-        showToast("Đã sao chép!");
+        if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && navigator.clipboard) {
+            navigator.clipboard.writeText(text);
+            showToast("Đã sao chép!");
+        }
     };
 
     const handleVnpayRedirect = () => {
@@ -1115,9 +1145,6 @@ const AdminLoginPage = ({ handleLogin, handleNavigate }: { handleLogin: (email: 
     );
 };
 
-// FIX: Changed handleSignup prop type from `(data: any) => boolean` to `(data: any) => void`
-// to correctly handle the async `handleSignup` function passed from the parent App component,
-// which returns a Promise. The return value is not used here, so `void` is appropriate.
 const SignupPage = ({ handleSignup, handleNavigate, showToast }: { handleSignup: (data: any) => void, handleNavigate: (view: AppView) => void, showToast: (message: string) => void }) => {
     const [formData, setFormData] = useState({ email: '', password: '', confirmPassword: '', name: '', phone: '', role: 'jobseeker' });
 
@@ -1431,6 +1458,7 @@ const App = () => {
     const [privateChats, setPrivateChats] = useState<PrivateChatSession[]>([]);
     const [applications, setApplications] = useState<Application[]>([]);
     const [isDataLoaded, setIsDataLoaded] = useState(false);
+    const [isClient, setIsClient] = useState(false); // For client-side only rendering
 
     const [view, setView] = useState<AppView>('main');
     const [currentUser, setCurrentUser] = useState<CurrentUser>(null);
@@ -1458,6 +1486,12 @@ const App = () => {
 
     const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
 
+    // --- TOAST NOTIFICATION ---
+    const showToast = useCallback((message: string) => {
+        setToast({ message, id: Date.now() });
+        setTimeout(() => setToast(null), 3000);
+    }, []);
+
     // --- API & DATA HANDLING ---
     const fetchData = useCallback(async () => {
         try {
@@ -1476,7 +1510,7 @@ const App = () => {
             console.error("Error fetching data:", error);
             showToast("Không thể tải dữ liệu từ máy chủ.");
         }
-    }, []);
+    }, [showToast]);
 
     const updateServerData = useCallback(async (dataToUpdate: object) => {
         try {
@@ -1494,20 +1528,15 @@ const App = () => {
             showToast("Lỗi: Không thể lưu thay đổi.");
             return false;
         }
-    }, [fetchData]);
-
-
-    // --- TOAST NOTIFICATION ---
-    const showToast = useCallback((message: string) => {
-        setToast({ message, id: Date.now() });
-        setTimeout(() => setToast(null), 3000);
-    }, []);
+    }, [fetchData, showToast]);
 
     // --- NAVIGATION HANDLER ---
     const handleNavigate = useCallback((targetView: AppView) => {
-        const path = targetView === 'adminDashboard' || targetView === 'adminLogin' ? '/admin' : '/';
-        if (window.location.pathname !== path) {
-            window.history.pushState({}, '', path);
+        if (typeof window !== 'undefined') {
+            const path = targetView === 'adminDashboard' || targetView === 'adminLogin' ? '/admin' : '/';
+            if (window.location.pathname !== path) {
+                window.history.pushState({}, '', path);
+            }
         }
         setView(targetView);
     }, []);
@@ -1515,20 +1544,30 @@ const App = () => {
     // --- ADMIN ACTION LOGGING ---
     const logAdminAction = useCallback(async (action: string) => {
         if (!currentUser || currentUser.role !== 'admin') return;
-        const newLog: ActionLog = {
-            id: Date.now(),
-            adminId: currentUser.id,
-            adminName: currentUser.name,
-            action: action,
-            ipAddress: '127.0.0.1', // Simulated IP
-            timestamp: new Date().toLocaleString('vi-VN')
-        };
-        const updatedLogs = [newLog, ...actionLogs];
-        setActionLogs(updatedLogs); // Optimistic update
-        await updateServerData({ actionLogs: updatedLogs });
+        try {
+            const newLog: ActionLog = {
+                id: Date.now(),
+                adminId: currentUser.id,
+                adminName: currentUser.name,
+                action: action,
+                ipAddress: '127.0.0.1', // Simulated IP
+                timestamp: new Date().toLocaleString('vi-VN')
+            };
+            const updatedLogs = [newLog, ...actionLogs];
+            setActionLogs(updatedLogs); // Optimistic update
+            await updateServerData({ actionLogs: updatedLogs });
+        } catch (error) {
+            console.error("Failed to log admin action:", error);
+            // Don't show toast for logging failure, it's a background task
+        }
     }, [currentUser, actionLogs, updateServerData]);
 
     // --- EFFECTS ---
+    // This effect runs only once on the client, preventing SSR issues.
+    useEffect(() => {
+        setIsClient(true);
+    }, []);
+
     // Initial Data Load
     useEffect(() => {
         fetchData();
@@ -1536,29 +1575,33 @@ const App = () => {
 
     // Client-side routing based on URL path
      useEffect(() => {
-        const path = window.location.pathname;
-        if (path === '/admin') {
-            setView('adminLogin');
-        } else {
-            setView('main');
+        if (typeof window !== 'undefined') {
+            const path = window.location.pathname;
+            if (path === '/admin') {
+                setView('adminLogin');
+            } else {
+                setView('main');
+            }
         }
     }, []);
 
     // Session Persistence Effect
     useEffect(() => {
-        try {
-            const savedSession = localStorage.getItem('workhub-session');
-            if (savedSession) {
-                const user: CurrentUser = JSON.parse(savedSession);
-                if (user && users.some(dbUser => dbUser.id === user?.id)) {
-                    setCurrentUser(user);
-                } else {
-                     localStorage.removeItem('workhub-session');
+        if (typeof window !== 'undefined') {
+            try {
+                const savedSession = localStorage.getItem('workhub-session');
+                if (savedSession) {
+                    const user: CurrentUser = JSON.parse(savedSession);
+                    if (user && users.some(dbUser => dbUser.id === user?.id)) {
+                        setCurrentUser(user);
+                    } else {
+                         localStorage.removeItem('workhub-session');
+                    }
                 }
+            } catch (error) {
+                console.error("Failed to parse user session from localStorage", error);
+                localStorage.removeItem('workhub-session');
             }
-        } catch (error) {
-            console.error("Failed to parse user session from localStorage", error);
-            localStorage.removeItem('workhub-session');
         }
     }, [users]); // Depend on users being loaded from server
 
@@ -1576,19 +1619,25 @@ const App = () => {
     }, []);
 
     useEffect(() => {
-        const style = document.createElement('style');
-        style.innerHTML = `
-          .prose { max-width: 100% !important; }
-          @media (prefers-color-scheme: dark) {
-            input, textarea, select {
-              background-color: #1a1a1a !important; color: #ffffff !important;
-              -webkit-appearance: none !important; -webkit-text-fill-color: #ffffff !important;
-              border: 1px solid #444444 !important;
-            }
-          }
-        `;
-        document.head.appendChild(style);
-        return () => { document.head.removeChild(style); };
+        if (typeof document !== 'undefined') {
+            const style = document.createElement('style');
+            style.innerHTML = `
+              .prose { max-width: 100% !important; }
+              @media (prefers-color-scheme: dark) {
+                input, textarea, select {
+                  background-color: #1a1a1a !important; color: #ffffff !important;
+                  -webkit-appearance: none !important; -webkit-text-fill-color: #ffffff !important;
+                  border: 1px solid #444444 !important;
+                }
+              }
+            `;
+            document.head.appendChild(style);
+            return () => { 
+                if (document.head.contains(style)) {
+                    document.head.removeChild(style); 
+                }
+            };
+        }
     }, []);
 
     useEffect(() => {
@@ -1597,8 +1646,10 @@ const App = () => {
                 setIsNotificationOpen(false);
             }
         };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+        if (typeof document !== 'undefined') {
+            document.addEventListener("mousedown", handleClickOutside);
+            return () => document.removeEventListener("mousedown", handleClickOutside);
+        }
     }, []);
 
     // --- DATA & FILTERS ---
@@ -1686,7 +1737,9 @@ const App = () => {
             const userToStore = { ...user };
             delete (userToStore as any).passwordHash;
             setCurrentUser(userToStore);
-            localStorage.setItem('workhub-session', JSON.stringify(userToStore));
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('workhub-session', JSON.stringify(userToStore));
+            }
             handleNavigate(user.role === 'admin' ? 'adminDashboard' : 'main');
             showToast(`Chào mừng ${user.name}!`);
             return true;
@@ -1698,124 +1751,144 @@ const App = () => {
 
     const handleLogout = useCallback(() => {
         setCurrentUser(null);
-        localStorage.removeItem('workhub-session');
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('workhub-session');
+        }
         handleNavigate('main');
         showToast("Bạn đã đăng xuất.");
     }, [showToast, handleNavigate]);
 
-    const handleSignup = useCallback(async (data: any): Promise<boolean> => {
-        if (users.some(u => u.email.toLowerCase() === data.email.toLowerCase())) {
-            showToast("Email này đã được đăng ký.");
-            return false;
+    const handleSignup = useCallback(async (data: any) => {
+        try {
+            if (users.some(u => u.email.toLowerCase() === data.email.toLowerCase())) {
+                showToast("Email này đã được đăng ký.");
+                return;
+            }
+            const newUser: User = {
+                id: Date.now(),
+                email: data.email,
+                passwordHash: 'hashed_password_123',
+                name: data.name,
+                phone: data.phone,
+                role: data.role,
+                isLocked: false,
+            };
+            
+            const success = await updateServerData({ users: [...users, newUser] });
+            if(success) {
+                 showToast("Đăng ký thành công! Vui lòng đăng nhập.");
+                 handleNavigate('login');
+            }
+        } catch (error) {
+            console.error("Signup failed:", error);
+            showToast("Đã xảy ra lỗi trong quá trình đăng ký.");
         }
-        const newUser: User = {
-            id: Date.now(),
-            email: data.email,
-            passwordHash: 'hashed_password_123',
-            name: data.name,
-            phone: data.phone,
-            role: data.role,
-            isLocked: false,
-        };
-        
-        const success = await updateServerData({ users: [...users, newUser] });
-        if(success) {
-             showToast("Đăng ký thành công! Vui lòng đăng nhập.");
-             handleNavigate('login');
-        }
-        return success;
     }, [showToast, users, handleNavigate, updateServerData]);
     
-    const handlePostJob = async (formData: any, isFeatured: boolean) => {
+    const handlePostJob = useCallback(async (formData: any, isFeatured: boolean) => {
         if (!currentUser) return;
+        try {
+            const workLocationData = await geocodePlusCodeOrAddress(formData.location);
+            const interviewLocationData = await geocodePlusCodeOrAddress(formData.interviewAddress);
 
-        const workLocationData = await geocodePlusCodeOrAddress(formData.location);
-        const interviewLocationData = await geocodePlusCodeOrAddress(formData.interviewAddress);
-
-        if (!workLocationData || !interviewLocationData) {
-            showToast("Lỗi: Không thể xác định một hoặc cả hai địa chỉ. Vui lòng nhập địa chỉ chính xác hoặc dùng Plus Code.");
-            return;
-        }
-    
-        const newJob: Job = {
-            id: Date.now(),
-            companyId: currentUser.id,
-            title: formData.title,
-            company: formData.company,
-            logo: formData.logo,
-            location: formData.location,
-            salary: formData.salary,
-            description: formData.description,
-            schedule: formData.schedule,
-            industry: formData.industry,
-            employmentType: formData.employmentType,
-            interviewAddress: formData.interviewAddress,
-            workLocationGps: workLocationData.coords,
-            workPlusCode: workLocationData.plusCode,
-            recruiter: {
-                name: `Phòng nhân sự ${formData.company}`,
-                email: formData.recruiterEmail,
-                hotline: formData.recruiterHotline,
-                officeLocation: formData.interviewAddress,
-                officeGps: interviewLocationData.coords,
-                officePlusCode: interviewLocationData.plusCode
-            },
-            isVerified: false,
-            benefits: typeof formData.benefits === 'string' ? formData.benefits.split(',').map((s:string) => s.trim()) : [],
-            requirements: typeof formData.requirements === 'string' ? formData.requirements.split('\n').map((s:string) => s.trim()) : [],
-            rating: 0,
-            reviewCount: 0,
-            reviews: [],
-            postedDate: "Vừa xong",
-            isFeatured: false,
-        };
-
-        if (isFeatured) {
-            setJobDataForPayment({ ...newJob, isFeatured: true });
-        } else {
-            const success = await updateServerData({ jobs: [newJob, ...jobs] });
-            if (success) {
-                setNewJobNotifications(prev => [newJob, ...prev].slice(0, 5));
-                setIsPostingModalOpen(false);
-                showToast("Đăng tin thành công!");
+            if (!workLocationData || !interviewLocationData) {
+                showToast("Lỗi: Không thể xác định một hoặc cả hai địa chỉ. Vui lòng nhập địa chỉ chính xác hoặc dùng Plus Code.");
+                return;
             }
-        }
-    };
-    
-    const handlePaymentSuccess = async () => {
-        if (!jobDataForPayment || !currentUser) return;
-        const newPayment: Payment = {
-            id: `TXN${Date.now()}`,
-            userId: currentUser.id,
-            date: new Date().toISOString().split('T')[0],
-            service: 'Tin Nổi Bật',
-            amount: 99000,
-            status: 'Completed',
-        };
-        const success = await updateServerData({ 
-            jobs: [jobDataForPayment, ...jobs],
-            payments: [...payments, newPayment]
-        });
         
-        if (success) {
-            setNewJobNotifications(prev => [jobDataForPayment, ...prev].slice(0, 5));
-            setJobDataForPayment(null);
-            setIsPostingModalOpen(false);
-            showToast("Thanh toán và đăng tin nổi bật thành công!");
+            const newJob: Job = {
+                id: Date.now(),
+                companyId: currentUser.id,
+                title: formData.title,
+                company: formData.company,
+                logo: formData.logo,
+                location: formData.location,
+                salary: formData.salary,
+                description: formData.description,
+                schedule: formData.schedule,
+                industry: formData.industry,
+                employmentType: formData.employmentType,
+                interviewAddress: formData.interviewAddress,
+                workLocationGps: workLocationData.coords,
+                workPlusCode: workLocationData.plusCode,
+                recruiter: {
+                    name: `Phòng nhân sự ${formData.company}`,
+                    email: formData.recruiterEmail,
+                    hotline: formData.recruiterHotline,
+                    officeLocation: formData.interviewAddress,
+                    officeGps: interviewLocationData.coords,
+                    officePlusCode: interviewLocationData.plusCode
+                },
+                isVerified: false,
+                benefits: typeof formData.benefits === 'string' ? formData.benefits.split(',').map((s:string) => s.trim()) : [],
+                requirements: typeof formData.requirements === 'string' ? formData.requirements.split('\n').map((s:string) => s.trim()) : [],
+                rating: 0,
+                reviewCount: 0,
+                reviews: [],
+                postedDate: "Vừa xong",
+                isFeatured: false,
+            };
+
+            if (isFeatured) {
+                setJobDataForPayment({ ...newJob, isFeatured: true });
+            } else {
+                const success = await updateServerData({ jobs: [newJob, ...jobs] });
+                if (success) {
+                    setNewJobNotifications(prev => [newJob, ...prev].slice(0, 5));
+                    setIsPostingModalOpen(false);
+                    showToast("Đăng tin thành công!");
+                }
+            }
+        } catch (error) {
+             console.error("Failed to post job:", error);
+             showToast("Đã xảy ra lỗi khi đăng tin. Vui lòng thử lại.");
         }
-    };
+    }, [currentUser, jobs, showToast, updateServerData]);
+    
+    const handlePaymentSuccess = useCallback(async () => {
+        if (!jobDataForPayment || !currentUser) return;
+        try {
+            const newPayment: Payment = {
+                id: `TXN${Date.now()}`,
+                userId: currentUser.id,
+                date: new Date().toISOString().split('T')[0],
+                service: 'Tin Nổi Bật',
+                amount: 99000,
+                status: 'Completed',
+            };
+            const success = await updateServerData({ 
+                jobs: [jobDataForPayment, ...jobs],
+                payments: [...payments, newPayment]
+            });
+            
+            if (success) {
+                setNewJobNotifications(prev => [jobDataForPayment, ...prev].slice(0, 5));
+                setJobDataForPayment(null);
+                setIsPostingModalOpen(false);
+                showToast("Thanh toán và đăng tin nổi bật thành công!");
+            }
+        } catch (error) {
+            console.error("Payment processing failed:", error);
+            showToast("Đã xảy ra lỗi khi xử lý thanh toán.");
+        }
+    }, [jobDataForPayment, currentUser, jobs, payments, showToast, updateServerData]);
 
     const handleAddNewReview = useCallback(async (jobId: number, review: Omit<Review, 'status'>) => {
-        const newReview = { ...review, status: 'pending' as const };
-        const updatedJobs = jobs.map(job => 
-            job.id === jobId 
-                ? { ...job, reviews: [newReview, ...job.reviews] }
-                : job
-        );
-        
-        const success = await updateServerData({ jobs: updatedJobs });
-        if(success) {
-            showToast("Cảm ơn bạn đã gửi đánh giá! Đánh giá của bạn đang chờ duyệt.");
+        try {
+            const newReview = { ...review, status: 'pending' as const };
+            const updatedJobs = jobs.map(job => 
+                job.id === jobId 
+                    ? { ...job, reviews: [newReview, ...job.reviews] }
+                    : job
+            );
+            
+            const success = await updateServerData({ jobs: updatedJobs });
+            if(success) {
+                showToast("Cảm ơn bạn đã gửi đánh giá! Đánh giá của bạn đang chờ duyệt.");
+            }
+        } catch (error) {
+            console.error("Failed to add new review:", error);
+            showToast("Không thể gửi đánh giá. Vui lòng thử lại.");
         }
     }, [jobs, showToast, updateServerData]);
 
@@ -1897,7 +1970,7 @@ const App = () => {
     };
     
     // --- CHAT & ADMIN HANDLERS ---
-    const handleStartPrivateChat = async (job: Job) => {
+    const handleStartPrivateChat = useCallback(async (job: Job) => {
         if (!currentUser) {
             showToast("Vui lòng đăng nhập để chat với nhà tuyển dụng.");
             handleNavigate('login');
@@ -1908,144 +1981,189 @@ const App = () => {
             showToast("Chức năng này chỉ dành cho người tìm việc.");
             return;
         }
+        try {
+            const sessionId = `${job.id}-${currentUser.id}`;
+            const existingChat = privateChats.find(c => c.sessionId === sessionId);
 
-        const sessionId = `${job.id}-${currentUser.id}`;
-        const existingChat = privateChats.find(c => c.sessionId === sessionId);
-
-        if (!existingChat) {
-            const newChat: PrivateChatSession = {
-                sessionId,
-                jobId: job.id,
-                participants: { applicantId: currentUser.id, employerId: job.companyId },
-                messages: [{ senderId: 0, text: `Cuộc hội thoại về tin đăng "${job.title}" đã bắt đầu.`, timestamp: Date.now() }]
-            };
-            await updateServerData({ privateChats: [...privateChats, newChat] });
-        }
-        
-        setActivePrivateChat(sessionId);
-        setSelectedJob(null);
-    };
-    
-    const handleSendPrivateMessage = async (sessionId: string, text: string) => {
-        if (!currentUser) return;
-        const updatedChats = privateChats.map(chat => {
-            if (chat.sessionId === sessionId) {
-                const newMessage: PrivateChatMessage = {
-                    senderId: currentUser.id,
-                    text,
-                    timestamp: Date.now()
+            if (!existingChat) {
+                const newChat: PrivateChatSession = {
+                    sessionId,
+                    jobId: job.id,
+                    participants: { applicantId: currentUser.id, employerId: job.companyId },
+                    messages: [{ senderId: 0, text: `Cuộc hội thoại về tin đăng "${job.title}" đã bắt đầu.`, timestamp: Date.now() }]
                 };
-                return { ...chat, messages: [...chat.messages, newMessage] };
+                await updateServerData({ privateChats: [...privateChats, newChat] });
             }
-            return chat;
-        });
-        setPrivateChats(updatedChats); // Optimistic update
-        await updateServerData({ privateChats: updatedChats });
-    };
+            
+            setActivePrivateChat(sessionId);
+            setSelectedJob(null);
+        } catch(error) {
+            console.error("Failed to start private chat:", error);
+            showToast("Không thể bắt đầu cuộc trò chuyện.");
+        }
+    }, [currentUser, privateChats, showToast, handleNavigate, updateServerData]);
+    
+    const handleSendPrivateMessage = useCallback(async (sessionId: string, text: string) => {
+        if (!currentUser) return;
+        try {
+            const updatedChats = privateChats.map(chat => {
+                if (chat.sessionId === sessionId) {
+                    const newMessage: PrivateChatMessage = {
+                        senderId: currentUser.id,
+                        text,
+                        timestamp: Date.now()
+                    };
+                    return { ...chat, messages: [...chat.messages, newMessage] };
+                }
+                return chat;
+            });
+            setPrivateChats(updatedChats); // Optimistic update
+            await updateServerData({ privateChats: updatedChats });
+        } catch (error) {
+            console.error("Failed to send private message:", error);
+            showToast("Không thể gửi tin nhắn.");
+            // Revert optimistic update if needed
+            fetchData();
+        }
+    }, [currentUser, privateChats, updateServerData, showToast, fetchData]);
     
     const toggleUserLock = useCallback(async (userId: number) => {
-        const updatedUsers = users.map(user => {
-            if (user.id === userId) return { ...user, isLocked: !user.isLocked };
-            return user;
-        });
-        
-        const success = await updateServerData({ users: updatedUsers });
-        if (success) {
-            const user = updatedUsers.find(u => u.id === userId);
-            if(user) {
-                await logAdminAction(`${user.isLocked ? 'Khóa' : 'Mở khóa'} người dùng ${user.email} (ID: ${userId})`);
-                showToast(`Đã ${user.isLocked ? 'khóa' : 'mở khóa'} tài khoản.`);
+        try {
+            const updatedUsers = users.map(user => {
+                if (user.id === userId) return { ...user, isLocked: !user.isLocked };
+                return user;
+            });
+            
+            const success = await updateServerData({ users: updatedUsers });
+            if (success) {
+                const user = updatedUsers.find(u => u.id === userId);
+                if(user) {
+                    await logAdminAction(`${user.isLocked ? 'Khóa' : 'Mở khóa'} người dùng ${user.email} (ID: ${userId})`);
+                    showToast(`Đã ${user.isLocked ? 'khóa' : 'mở khóa'} tài khoản.`);
+                }
             }
+        } catch (error) {
+            console.error("Failed to toggle user lock state:", error);
+            showToast("Đã xảy ra lỗi khi thay đổi trạng thái người dùng.");
         }
     }, [users, logAdminAction, showToast, updateServerData]);
 
     const deleteJob = useCallback(async (jobId: number) => {
-        if (window.confirm("Bạn có chắc chắn muốn xóa vĩnh viễn tin đăng này không?")) {
-            const updatedJobs = jobs.filter(job => job.id !== jobId);
-            const success = await updateServerData({ jobs: updatedJobs });
-            if (success) {
-                await logAdminAction(`Xóa tin đăng ID: ${jobId}`);
-                showToast("Đã xóa tin đăng.");
+        if (typeof window !== 'undefined' && window.confirm("Bạn có chắc chắn muốn xóa vĩnh viễn tin đăng này không?")) {
+            try {
+                const updatedJobs = jobs.filter(job => job.id !== jobId);
+                const success = await updateServerData({ jobs: updatedJobs });
+                if (success) {
+                    await logAdminAction(`Xóa tin đăng ID: ${jobId}`);
+                    showToast("Đã xóa tin đăng.");
+                }
+            } catch (error) {
+                console.error("Failed to delete job:", error);
+                showToast("Đã xảy ra lỗi khi xóa tin đăng.");
             }
         }
     }, [jobs, logAdminAction, showToast, updateServerData]);
     
-    const handleUpdateJob = async (updatedJob: Job) => {
-        const updatedJobs = jobs.map(job => job.id === updatedJob.id ? updatedJob : job);
-        const success = await updateServerData({ jobs: updatedJobs });
-        if (success) {
-             await logAdminAction(`Cập nhật tin đăng "${updatedJob.title}" (ID: ${updatedJob.id})`);
-        }
-    };
-
-    const handleReportAction = async (reportId: number) => {
-        const updatedReports = reports.filter(r => r.id !== reportId);
-        const success = await updateServerData({ reports: updatedReports });
-        if(success) {
-            await logAdminAction(`Xử lý báo cáo ID: ${reportId}`);
-            showToast("Đã xử lý báo cáo.");
-        }
-    };
-
-    const handleReviewStatusChange = async (jobId: number, reviewIndex: number, newStatus: Review['status']) => {
-        const updatedJobs = jobs.map(job => {
-            if (job.id === jobId) {
-                const newReviews = [...job.reviews];
-                if (newReviews[reviewIndex]) {
-                    newReviews[reviewIndex].status = newStatus;
-                }
-                return { ...job, reviews: newReviews };
+    const handleUpdateJob = useCallback(async (updatedJob: Job) => {
+        try {
+            const updatedJobs = jobs.map(job => job.id === updatedJob.id ? updatedJob : job);
+            const success = await updateServerData({ jobs: updatedJobs });
+            if (success) {
+                 await logAdminAction(`Cập nhật tin đăng "${updatedJob.title}" (ID: ${updatedJob.id})`);
             }
-            return job;
-        });
-        const success = await updateServerData({ jobs: updatedJobs });
-        if(success) {
-            await logAdminAction(`Thay đổi trạng thái đánh giá (Job ID: ${jobId}, Review Index: ${reviewIndex}) thành ${newStatus}`);
+        } catch (error) {
+            console.error("Failed to update job:", error);
+            showToast("Không thể cập nhật tin đăng.");
         }
-    };
+    }, [jobs, logAdminAction, showToast, updateServerData]);
+
+    const handleReportAction = useCallback(async (reportId: number) => {
+        try {
+            const updatedReports = reports.filter(r => r.id !== reportId);
+            const success = await updateServerData({ reports: updatedReports });
+            if(success) {
+                await logAdminAction(`Xử lý báo cáo ID: ${reportId}`);
+                showToast("Đã xử lý báo cáo.");
+            }
+        } catch (error) {
+            console.error("Failed to resolve report:", error);
+            showToast("Đã xảy ra lỗi khi xử lý báo cáo.");
+        }
+    }, [reports, logAdminAction, showToast, updateServerData]);
+
+    const handleReviewStatusChange = useCallback(async (jobId: number, reviewIndex: number, newStatus: Review['status']) => {
+        try {
+            const updatedJobs = jobs.map(job => {
+                if (job.id === jobId) {
+                    const newReviews = [...job.reviews];
+                    if (newReviews[reviewIndex]) {
+                        newReviews[reviewIndex].status = newStatus;
+                    }
+                    return { ...job, reviews: newReviews };
+                }
+                return job;
+            });
+            const success = await updateServerData({ jobs: updatedJobs });
+            if(success) {
+                await logAdminAction(`Thay đổi trạng thái đánh giá (Job ID: ${jobId}, Review Index: ${reviewIndex}) thành ${newStatus}`);
+            }
+        } catch (error) {
+            console.error("Failed to change review status:", error);
+            showToast("Không thể thay đổi trạng thái đánh giá.");
+        }
+    }, [jobs, logAdminAction, showToast, updateServerData]);
     
-    const handleSubmitReport = async (reason: string, details: string) => {
+    const handleSubmitReport = useCallback(async (reason: string, details: string) => {
         if (!jobToReport) return;
-        const newReport: Report = {
-            id: Date.now(),
-            jobId: jobToReport.id,
-            jobTitle: jobToReport.title,
-            reason,
-            details,
-            status: 'pending'
-        };
-        const success = await updateServerData({ reports: [newReport, ...reports] });
-        if (success) {
-            showToast("Cảm ơn bạn đã báo cáo. Chúng tôi sẽ xem xét sớm nhất có thể.");
-            setJobToReport(null);
+        try {
+            const newReport: Report = {
+                id: Date.now(),
+                jobId: jobToReport.id,
+                jobTitle: jobToReport.title,
+                reason,
+                details,
+                status: 'pending'
+            };
+            const success = await updateServerData({ reports: [newReport, ...reports] });
+            if (success) {
+                showToast("Cảm ơn bạn đã báo cáo. Chúng tôi sẽ xem xét sớm nhất có thể.");
+                setJobToReport(null);
+            }
+        } catch (error) {
+            console.error("Failed to submit report:", error);
+            showToast("Không thể gửi báo cáo. Vui lòng thử lại.");
         }
-    };
+    }, [jobToReport, reports, showToast, updateServerData]);
 
      const handleCvSubmit = useCallback(async (job: Job, file: File) => {
         if (!currentUser || currentUser.role !== 'jobseeker') {
             showToast("Vui lòng đăng nhập với tư cách người tìm việc để nộp CV.");
             return;
         }
+        try {
+            // Simulate file upload and get URL
+            const simulatedUrl = `https://your-storage.com/cvs/${currentUser.id}-${job.id}-${file.name}`;
+            const newApplication: Application = {
+                id: Date.now(),
+                jobId: job.id,
+                applicantId: currentUser.id,
+                cvFileUrl: simulatedUrl,
+                submittedAt: new Date().toISOString(),
+            };
 
-        // Simulate file upload and get URL
-        const simulatedUrl = `https://your-storage.com/cvs/${currentUser.id}-${job.id}-${file.name}`;
-        const newApplication: Application = {
-            id: Date.now(),
-            jobId: job.id,
-            applicantId: currentUser.id,
-            cvFileUrl: simulatedUrl,
-            submittedAt: new Date().toISOString(),
-        };
+            const success = await updateServerData({ applications: [...applications, newApplication] });
 
-        const success = await updateServerData({ applications: [...applications, newApplication] });
-
-        if (success) {
-            console.log(`--- EMAIL NOTIFICATION SIMULATION ---
-            To: ${job.recruiter.email}, Subject: Ứng tuyển mới cho vị trí: ${job.title}
-            Body: Bạn đã nhận được một hồ sơ ứng tuyển mới từ ${currentUser.name} cho vị trí "${job.title}".
-            -------------------------------------`);
-            showToast("Nộp CV thành công! Nhà tuyển dụng đã được thông báo.");
-            setSelectedJob(null);
+            if (success) {
+                console.log(`--- EMAIL NOTIFICATION SIMULATION ---
+                To: ${job.recruiter.email}, Subject: Ứng tuyển mới cho vị trí: ${job.title}
+                Body: Bạn đã nhận được một hồ sơ ứng tuyển mới từ ${currentUser.name} cho vị trí "${job.title}".
+                -------------------------------------`);
+                showToast("Nộp CV thành công! Nhà tuyển dụng đã được thông báo.");
+                setSelectedJob(null);
+            }
+        } catch (error) {
+            console.error("Failed to submit CV:", error);
+            showToast("Đã xảy ra lỗi khi nộp CV.");
         }
     }, [currentUser, showToast, applications, updateServerData]);
 
@@ -2092,46 +2210,50 @@ const App = () => {
                 setIsPostingModalOpen={setIsPostingModalOpen}
             />
             {renderView()}
-            {selectedJob && (
-                <JobDetailModal
-                    job={selectedJob}
-                    onClose={() => setSelectedJob(null)}
-                    handleAddNewReview={handleAddNewReview}
-                    showToast={showToast}
-                    handleStartPrivateChat={handleStartPrivateChat}
-                    handleOpenReportModal={setJobToReport}
-                    googleApiKey={CONFIG.GOOGLE_API_KEY}
-                    currentUser={currentUser}
-                    applications={applications}
-                    handleCvSubmit={handleCvSubmit}
+            {isClient && (
+              <>
+                {selectedJob && (
+                    <JobDetailModal
+                        job={selectedJob}
+                        onClose={() => setSelectedJob(null)}
+                        handleAddNewReview={handleAddNewReview}
+                        showToast={showToast}
+                        handleStartPrivateChat={handleStartPrivateChat}
+                        handleOpenReportModal={setJobToReport}
+                        googleApiKey={CONFIG.GOOGLE_API_KEY}
+                        currentUser={currentUser}
+                        applications={applications}
+                        handleCvSubmit={handleCvSubmit}
+                    />
+                )}
+                {activeChatSession && currentUser && (
+                    <PrivateChatModal
+                        session={activeChatSession}
+                        currentUser={currentUser}
+                        users={users}
+                        job={jobs.find(j => j.id === activeChatSession.jobId)}
+                        onClose={() => setActivePrivateChat(null)}
+                        onSendMessage={handleSendPrivateMessage}
+                    />
+                )}
+                {jobToEdit && <EditJobModal job={jobToEdit} onClose={() => setJobToEdit(null)} onUpdate={handleUpdateJob} showToast={showToast} />}
+                {jobToReport && <ReportJobModal job={jobToReport} onClose={() => setJobToReport(null)} onSubmit={handleSubmitReport} showToast={showToast} />}
+                {isPostingModalOpen && currentUser?.role ==='employer' && <JobPostingModal currentUser={currentUser} onClose={() => setIsPostingModalOpen(false)} onPost={handlePostJob} />}
+                {jobDataForPayment && <PaymentModal jobData={jobDataForPayment} onClose={() => setJobDataForPayment(null)} onSuccess={handlePaymentSuccess} showToast={showToast} />}
+                <ChatWidget 
+                    isChatOpen={isChatOpen}
+                    setIsChatOpen={setIsChatOpen}
+                    chatMessages={chatMessages}
+                    userInput={userInput}
+                    setUserInput={setUserInput}
+                    handleSendMessage={handleSendMessage}
+                    botStatus={botStatus}
+                    isAiReady={isAiReady}
+                    selectedJob={selectedJob}
+                    handleOpenJobFromChat={handleOpenJobFromChat}
                 />
+              </>
             )}
-            {activeChatSession && currentUser && (
-                <PrivateChatModal
-                    session={activeChatSession}
-                    currentUser={currentUser}
-                    users={users}
-                    job={jobs.find(j => j.id === activeChatSession.jobId)}
-                    onClose={() => setActivePrivateChat(null)}
-                    onSendMessage={handleSendPrivateMessage}
-                />
-            )}
-            {jobToEdit && <EditJobModal job={jobToEdit} onClose={() => setJobToEdit(null)} onUpdate={handleUpdateJob} showToast={showToast} />}
-            {jobToReport && <ReportJobModal job={jobToReport} onClose={() => setJobToReport(null)} onSubmit={handleSubmitReport} showToast={showToast} />}
-            {isPostingModalOpen && currentUser?.role ==='employer' && <JobPostingModal currentUser={currentUser} onClose={() => setIsPostingModalOpen(false)} onPost={handlePostJob} />}
-            {jobDataForPayment && <PaymentModal jobData={jobDataForPayment} onClose={() => setJobDataForPayment(null)} onSuccess={handlePaymentSuccess} showToast={showToast} />}
-            <ChatWidget 
-                isChatOpen={isChatOpen}
-                setIsChatOpen={setIsChatOpen}
-                chatMessages={chatMessages}
-                userInput={userInput}
-                setUserInput={setUserInput}
-                handleSendMessage={handleSendMessage}
-                botStatus={botStatus}
-                isAiReady={isAiReady}
-                selectedJob={selectedJob}
-                handleOpenJobFromChat={handleOpenJobFromChat}
-            />
              {toast && (
                 <div className="fixed top-5 right-5 bg-gray-800 text-white px-4 py-2 rounded-md shadow-lg z-50 animate-fade-in-out">
                     {toast.message}

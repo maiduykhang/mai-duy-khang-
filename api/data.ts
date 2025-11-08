@@ -42,6 +42,13 @@ export default async function handler(req: any, res: any) {
 
     try {
         if (req.method === 'GET') {
+            // Add cache-control headers to prevent Vercel and browsers from caching the data response.
+            // This ensures that any client fetching data always gets the latest version from the KV store,
+            // making data changes appear instantly for all users.
+            res.setHeader('Cache-Control', 'no-cache, no-store, max-age=0, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+            
             let data = await kv.get(DATA_KEY);
             if (!data) {
                 // Seed data if it doesn't exist
