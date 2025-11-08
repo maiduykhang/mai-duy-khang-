@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- TYPES ---
@@ -123,20 +124,9 @@ type FallbackData = {
 
 // --- CONFIGURATION ---
 const CONFIG = {
-  GOOGLE_API_KEY: null, // Tạm thời disable API
+  GOOGLE_API_KEY: null, // This is a placeholder; the real key is used server-side.
 };
 
-// --- MOCK Geocoding API ---
-const geocodeAddress = async (address: string) => {
-  console.log('Mock geocoding:', address);
-  await new Promise(resolve => setTimeout(resolve, 300)); // Giả lập delay
-  return [21.0285, 105.8542] as [number, number]; // Tọa độ Hà Nội mẫu
-};
-
-const geocodePlusCodeOrAddress = async (input: string) => {
-  const coords = await geocodeAddress(input);
-  return { coords, plusCode: undefined };
-};
 
 // --- FALLBACK DATA ---
 // This data is used if the initial fetch from the API fails,
@@ -623,11 +613,33 @@ const JobDetailModal = ({ job, onClose, handleAddNewReview, showToast, handleSta
     );
 }
 
-const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void, onPost: (formData: any, isFeatured: boolean) => void, currentUser: CurrentUser }) => {
+// Address validation status UI helper component
+const AddressValidationStatus = ({ status }: { status: 'idle' | 'validating' | 'valid' | 'invalid' }) => {
+    switch (status) {
+        case 'validating':
+            return <div className="absolute right-2.5 top-1/2 -translate-y-1/2"><svg className="animate-spin h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>;
+        case 'valid':
+            return <div className="absolute right-2.5 top-1/2 -translate-y-1/2"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg></div>;
+        case 'invalid':
+            return <div className="absolute right-2.5 top-1/2 -translate-y-1/2"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg></div>;
+        default:
+            return null;
+    }
+};
+
+const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void, onPost: (formData: any, isFeatured: boolean, locations: { work: [number, number], interview: [number, number] }) => void, currentUser: CurrentUser }) => {
     const [formData, setFormData] = useState<any>({ company: "Công ty TNHH ABC", title: "Nhân viên Marketing", logo: "https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg", location: "", salary: "Thoả thuận", benefits: "BHXH, Lương tháng 13", interviewAddress: "", description: "Mô tả công việc...", schedule: "Giờ hành chính", requirements: "Yêu cầu...", industry: "Marketing", employmentType: "Toàn thời gian", recruiterEmail: "hr@abc.com", recruiterHotline: "0123456789" });
     const [logoPreview, setLogoPreview] = useState<string | null>(formData.logo);
     const [formErrors, setFormErrors] = useState<any>({});
     const [postingType, setPostingType] = useState<'standard' | 'featured'>('standard');
+    
+    type ValidationStatus = { status: 'idle' | 'validating' | 'valid' | 'invalid', coords: [number, number] | null, error: string | null };
+    const [addressValidation, setAddressValidation] = useState<{ location: ValidationStatus, interviewAddress: ValidationStatus }>({
+        location: { status: 'idle', coords: null, error: null },
+        interviewAddress: { status: 'idle', coords: null, error: null }
+    });
+    // Fix: Use ReturnType<typeof setTimeout> for browser compatibility instead of NodeJS.Timeout.
+    const validationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         if (currentUser) {
@@ -640,8 +652,34 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
         }
     }, [currentUser]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
+    const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target as { name: 'location' | 'interviewAddress', value: string };
+        setFormData({ ...formData, [name]: value });
+
+        setAddressValidation(prev => ({ ...prev, [name]: { status: 'validating', coords: null, error: null } }));
+
+        if (validationTimer.current) clearTimeout(validationTimer.current);
+        validationTimer.current = setTimeout(async () => {
+            if (value.trim().length < 10) {
+                setAddressValidation(prev => ({ ...prev, [name]: { status: 'invalid', coords: null, error: 'Địa chỉ quá ngắn.' } }));
+                return;
+            }
+            try {
+                const res = await fetch('/api/geocode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ address: value }),
+                });
+                const result = await res.json();
+                if (result.success) {
+                    setAddressValidation(prev => ({ ...prev, [name]: { status: 'valid', coords: [result.data.lat, result.data.lng], error: null } }));
+                } else {
+                    setAddressValidation(prev => ({ ...prev, [name]: { status: 'invalid', coords: null, error: result.error || 'Địa chỉ không hợp lệ.' } }));
+                }
+            } catch (err) {
+                 setAddressValidation(prev => ({ ...prev, [name]: { status: 'invalid', coords: null, error: 'Lỗi kết nối.' } }));
+            }
+        }, 800);
     };
 
     const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -656,27 +694,36 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const errors: any = {};
-        const urlRegex = /http/i;
-
-        // --- Address & Other Validations ---
-        if (!formData.location) errors.location = "Bắt buộc.";
-        else if (urlRegex.test(formData.location)) errors.location = "Vui lòng chỉ nhập địa chỉ hoặc Plus Code, không nhập URL.";
-
-        if (!formData.interviewAddress) errors.interviewAddress = "Bắt buộc.";
-        else if (urlRegex.test(formData.interviewAddress)) errors.interviewAddress = "Vui lòng chỉ nhập địa chỉ hoặc Plus Code, không nhập URL.";
         
+        // --- Standard field validations ---
         if (!formData.recruiterEmail) errors.recruiterEmail = "Bắt buộc.";
         if (!formData.salary) errors.salary = "Bắt buộc.";
         if (!formData.benefits) errors.benefits = "Bắt buộc.";
         if (!formData.description) errors.description = "Bắt buộc.";
         if (!formData.schedule) errors.schedule = "Bắt buộc.";
         if (!formData.requirements) errors.requirements = "Bắt buộc.";
+
+        // --- Address validations ---
+        if (addressValidation.location.status !== 'valid') {
+            errors.location = addressValidation.location.error || "Địa chỉ nơi làm việc chưa được xác thực hoặc không hợp lệ.";
+        }
+         if (addressValidation.interviewAddress.status !== 'valid') {
+            errors.interviewAddress = addressValidation.interviewAddress.error || "Địa chỉ phỏng vấn chưa được xác thực hoặc không hợp lệ.";
+        }
         
         setFormErrors(errors);
 
         if (Object.keys(errors).length === 0) {
-            onPost(formData, postingType === 'featured');
+            const locations = {
+                work: addressValidation.location.coords!,
+                interview: addressValidation.interviewAddress.coords!
+            };
+            onPost(formData, postingType === 'featured', locations);
         }
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
     return (
@@ -742,22 +789,22 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
                         <div className="md:col-span-2">
                             <label htmlFor="location" className="flex items-center text-sm font-medium text-gray-800 mb-1">
                                 <span>Địa chỉ Nơi làm việc <span className="text-red-500">*</span></span>
-                                <InfoIcon tooltipText="For reliable map pinning, please enter a Plus Code or a complete street address (e.g., House Number, Street, Ward, District)." />
+                                <InfoIcon tooltipText="Vui lòng nhập một địa chỉ đầy đủ (số nhà, tên đường, phường, quận) để đảm bảo ghim trên bản đồ chính xác." />
                             </label>
                              <div className="relative">
-                                <input type="text" name="location" id="location" value={formData.location} onChange={handleChange} className="w-full border-gray-300 rounded-md" placeholder="Enter Street Address or Plus Code (e.g., Q2C2+2R)" />
-                                <a href="https://maps.google.com/pluscodes/" target="_blank" rel="noopener noreferrer" className="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300">Get Plus Code</a>
+                                <input type="text" name="location" id="location" value={formData.location} onChange={handleAddressChange} className="w-full border-gray-300 rounded-md pr-8" placeholder="VD: 24 Tôn Thất Tùng, Bến Thành, Quận 1" />
+                                <AddressValidationStatus status={addressValidation.location.status} />
                              </div>
                             {formErrors.location && <p className="text-red-500 text-xs mt-1">{formErrors.location}</p>}
                         </div>
                         <div className="md:col-span-2">
                             <label htmlFor="interviewAddress" className="flex items-center text-sm font-medium text-gray-800 mb-1">
                                 <span>Địa chỉ Phỏng vấn <span className="text-red-500">*</span></span>
-                                <InfoIcon tooltipText="For reliable map pinning, please enter a Plus Code or a complete street address (e.g., House Number, Street, Ward, District)." />
+                                <InfoIcon tooltipText="Vui lòng nhập một địa chỉ đầy đủ (số nhà, tên đường, phường, quận) để đảm bảo ghim trên bản đồ chính xác." />
                             </label>
                              <div className="relative">
-                                <input type="text" name="interviewAddress" id="interviewAddress" value={formData.interviewAddress} onChange={handleChange} className="w-full border-gray-300 rounded-md" placeholder="Enter Street Address or Plus Code (e.g., Q2FX+67)"/>
-                                <a href="https://maps.google.com/pluscodes/" target="_blank" rel="noopener noreferrer" className="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300">Get Plus Code</a>
+                                <input type="text" name="interviewAddress" id="interviewAddress" value={formData.interviewAddress} onChange={handleAddressChange} className="w-full border-gray-300 rounded-md pr-8" placeholder="VD: 37 Tôn Đức Thắng, Bến Nghé, Quận 1"/>
+                                <AddressValidationStatus status={addressValidation.interviewAddress.status} />
                              </div>
                             {formErrors.interviewAddress && <p className="text-red-500 text-xs mt-1">{formErrors.interviewAddress}</p>}
                         </div>
@@ -1787,17 +1834,9 @@ const App = () => {
         }
     }, [showToast, users, handleNavigate, updateServerData]);
     
-    const handlePostJob = useCallback(async (formData: any, isFeatured: boolean) => {
+    const handlePostJob = useCallback(async (formData: any, isFeatured: boolean, locations: { work: [number, number], interview: [number, number] }) => {
         if (!currentUser) return;
         try {
-            const workLocationData = await geocodePlusCodeOrAddress(formData.location);
-            const interviewLocationData = await geocodePlusCodeOrAddress(formData.interviewAddress);
-
-            if (!workLocationData || !interviewLocationData) {
-                showToast("Lỗi: Không thể xác định một hoặc cả hai địa chỉ. Vui lòng nhập địa chỉ chính xác hoặc dùng Plus Code.");
-                return;
-            }
-        
             const newJob: Job = {
                 id: Date.now(),
                 companyId: currentUser.id,
@@ -1811,15 +1850,15 @@ const App = () => {
                 industry: formData.industry,
                 employmentType: formData.employmentType,
                 interviewAddress: formData.interviewAddress,
-                workLocationGps: workLocationData.coords,
-                workPlusCode: workLocationData.plusCode,
+                workLocationGps: locations.work,
+                workPlusCode: undefined, // Plus Code generation can be added server-side if needed
                 recruiter: {
                     name: `Phòng nhân sự ${formData.company}`,
                     email: formData.recruiterEmail,
                     hotline: formData.recruiterHotline,
                     officeLocation: formData.interviewAddress,
-                    officeGps: interviewLocationData.coords,
-                    officePlusCode: interviewLocationData.plusCode
+                    officeGps: locations.interview,
+                    officePlusCode: undefined
                 },
                 isVerified: false,
                 benefits: typeof formData.benefits === 'string' ? formData.benefits.split(',').map((s:string) => s.trim()) : [],
