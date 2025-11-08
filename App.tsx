@@ -269,6 +269,30 @@ const mockPaymentsDatabase: Payment[] = [
     { id: 'TXN005', userId: 2, date: '2024-07-28', service: 'Tin Nổi Bật', amount: 99000, status: 'Pending' },
 ];
 
+// --- DATA PERSISTENCE HELPERS ---
+const safeJSONParse = <T,>(key: string, fallback: T): T => {
+    const item = localStorage.getItem(key);
+    if (item) {
+        try {
+            return JSON.parse(item);
+        } catch (e) {
+            console.warn(`Could not parse ${key} from localStorage, using initial data.`);
+            return fallback;
+        }
+    }
+    return fallback;
+};
+
+// Load initial data from localStorage or fallback to mock data
+const initialJobs = safeJSONParse('workhub_jobs', mockJobsDatabase);
+const initialUsers = safeJSONParse('workhub_users', mockUsersDatabase);
+const initialPayments = safeJSONParse('workhub_payments', mockPaymentsDatabase);
+const initialReports = safeJSONParse<Report[]>('workhub_reports', []);
+const initialActionLogs = safeJSONParse<ActionLog[]>('workhub_actionLogs', []);
+const initialPrivateChats = safeJSONParse<PrivateChatSession[]>('workhub_privateChats', []);
+const initialApplications = safeJSONParse<Application[]>('workhub_applications', []);
+
+
 // --- HELPER & ICON COMPONENTS ---
 const StarIcon = ({ filled, half = false, className = "w-4 h-4", ...props }: { filled: boolean; half?: boolean; className?: string; [key: string]: any; }) => {
     if (half) {
@@ -430,21 +454,21 @@ const ChatWidget = ({ isChatOpen, setIsChatOpen, chatMessages, userInput, setUse
 // Moved components outside of the main App component to prevent re-definition on each render,
 // which fixes the bug of input fields losing focus.
 
-const Header = ({ currentUser, setView, handleLogout, notificationRef, handleToggleNotifications, isNotificationOpen, newJobNotifications, handleOpenNotificationJob, setIsPostingModalOpen }: { currentUser: CurrentUser, setView: React.Dispatch<React.SetStateAction<AppView>>, handleLogout: () => void, notificationRef: React.RefObject<HTMLDivElement>, handleToggleNotifications: () => void, isNotificationOpen: boolean, newJobNotifications: Job[], handleOpenNotificationJob: (job: Job) => void, setIsPostingModalOpen: React.Dispatch<React.SetStateAction<boolean>> }) => (
+const Header = ({ currentUser, handleNavigate, handleLogout, notificationRef, handleToggleNotifications, isNotificationOpen, newJobNotifications, handleOpenNotificationJob, setIsPostingModalOpen }: { currentUser: CurrentUser, handleNavigate: (view: AppView) => void, handleLogout: () => void, notificationRef: React.RefObject<HTMLDivElement>, handleToggleNotifications: () => void, isNotificationOpen: boolean, newJobNotifications: Job[], handleOpenNotificationJob: (job: Job) => void, setIsPostingModalOpen: React.Dispatch<React.SetStateAction<boolean>> }) => (
     <header className="bg-white shadow-md sticky top-0 z-20">
         <nav className="container mx-auto px-6 py-3 flex justify-between items-center">
-            <div onClick={() => setView('main')} className="text-2xl font-bold text-blue-600 cursor-pointer">WorkHub</div>
+            <div onClick={() => handleNavigate('main')} className="text-2xl font-bold text-blue-600 cursor-pointer">WorkHub</div>
             <div className="flex items-center space-x-4">
                 {currentUser ? (
                     <>
                          <span className="text-sm text-gray-600 hidden md:block">Chào, {currentUser.name}</span>
-                         {currentUser.role !== 'jobseeker' && <button onClick={() => setView(currentUser.role === 'admin' ? 'adminDashboard' : 'employerDashboard')} className="text-gray-600 hover:text-blue-600 text-sm font-semibold">Dashboard</button>}
+                         {currentUser.role !== 'jobseeker' && <button onClick={() => handleNavigate(currentUser.role === 'admin' ? 'adminDashboard' : 'employerDashboard')} className="text-gray-600 hover:text-blue-600 text-sm font-semibold">Dashboard</button>}
                          <button onClick={handleLogout} className="text-gray-600 hover:text-blue-600 text-sm font-semibold">Đăng xuất</button>
                     </>
                 ) : (
                     <>
-                        <button onClick={() => setView('login')} className="text-gray-600 hover:text-blue-600 text-sm font-semibold">Đăng nhập</button>
-                        <button onClick={() => setView('signup')} className="hidden md:block bg-gray-100 text-blue-600 px-4 py-2 rounded-md hover:bg-gray-200 text-sm font-semibold">Đăng ký</button>
+                        <button onClick={() => handleNavigate('login')} className="text-gray-600 hover:text-blue-600 text-sm font-semibold">Đăng nhập</button>
+                        <button onClick={() => handleNavigate('signup')} className="hidden md:block bg-gray-100 text-blue-600 px-4 py-2 rounded-md hover:bg-gray-200 text-sm font-semibold">Đăng ký</button>
                     </>
                 )}
                 <div ref={notificationRef} className="relative">
@@ -1159,7 +1183,7 @@ const AuthPage = ({ children, title, onBack }: { children: React.ReactNode, titl
     </main>
 );
 
-const LoginPage = ({ handleLogin, showToast, setView, users }: { handleLogin: (email: string, pass: string) => boolean, showToast: (message: string) => void, setView: (view: AppView) => void, users: User[] }) => {
+const LoginPage = ({ handleLogin, showToast, handleNavigate, users }: { handleLogin: (email: string, pass: string) => boolean, showToast: (message: string) => void, handleNavigate: (view: AppView) => void, users: User[] }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -1174,12 +1198,12 @@ const LoginPage = ({ handleLogin, showToast, setView, users }: { handleLogin: (e
         handleLogin(fbUser.email, 'hashed_password_123');
     } else {
         showToast("Tài khoản Facebook chưa được liên kết. Vui lòng đăng ký.");
-        setView('signup');
+        handleNavigate('signup');
     }
   };
 
   return (
-      <AuthPage title="Đăng nhập" onBack={() => setView('main')}>
+      <AuthPage title="Đăng nhập" onBack={() => handleNavigate('main')}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">Email</label>
@@ -1203,7 +1227,7 @@ const LoginPage = ({ handleLogin, showToast, setView, users }: { handleLogin: (e
           Đăng nhập bằng Facebook
         </button>
         <p className="text-center text-sm text-gray-600 mt-6">
-          Chưa có tài khoản? <button onClick={() => setView('signup')} className="font-medium text-blue-600 hover:underline">Đăng ký ngay</button>
+          Chưa có tài khoản? <button onClick={() => handleNavigate('signup')} className="font-medium text-blue-600 hover:underline">Đăng ký ngay</button>
         </p>
         <div className="mt-6 pt-4 border-t border-gray-200">
             <p className="text-center text-xs text-gray-500">
@@ -1214,7 +1238,7 @@ const LoginPage = ({ handleLogin, showToast, setView, users }: { handleLogin: (e
   );
 };
 
-const SignupPage = ({ handleSignup, setView, showToast }: { handleSignup: (data: any) => boolean, setView: (view: AppView) => void, showToast: (message: string) => void }) => {
+const SignupPage = ({ handleSignup, handleNavigate, showToast }: { handleSignup: (data: any) => boolean, handleNavigate: (view: AppView) => void, showToast: (message: string) => void }) => {
     const [formData, setFormData] = useState({ email: '', password: '', confirmPassword: '', name: '', phone: '', role: 'jobseeker' });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -1230,7 +1254,7 @@ const SignupPage = ({ handleSignup, setView, showToast }: { handleSignup: (data:
     const handleRoleChange = (role: 'jobseeker' | 'employer') => setFormData(prev => ({ ...prev, role }));
 
     return (
-         <AuthPage title="Đăng ký tài khoản" onBack={() => setView('main')}>
+         <AuthPage title="Đăng ký tài khoản" onBack={() => handleNavigate('main')}>
             <div className="grid grid-cols-2 gap-2 rounded-md p-1 bg-gray-100 mb-6">
                 <button type="button" onClick={() => handleRoleChange('jobseeker')} className={`px-4 py-1.5 text-sm font-semibold rounded ${formData.role === 'jobseeker' ? 'bg-white shadow' : 'text-gray-600'}`}>Người tìm việc</button>
                 <button type="button" onClick={() => handleRoleChange('employer')} className={`px-4 py-1.5 text-sm font-semibold rounded ${formData.role === 'employer' ? 'bg-white shadow' : 'text-gray-600'}`}>Nhà tuyển dụng</button>
@@ -1259,7 +1283,7 @@ const SignupPage = ({ handleSignup, setView, showToast }: { handleSignup: (data:
               <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-md font-semibold">Đăng ký</button>
           </form>
            <p className="text-center text-sm text-gray-600 mt-6">
-            Đã có tài khoản? <button onClick={() => setView('login')} className="font-medium text-blue-600 hover:underline">Đăng nhập</button>
+            Đã có tài khoản? <button onClick={() => handleNavigate('login')} className="font-medium text-blue-600 hover:underline">Đăng nhập</button>
           </p>
         </AuthPage>
     );
@@ -1361,10 +1385,10 @@ const EmployerDashboard = ({ currentUser, jobs, payments, privateChats, users, h
   );
 };
 
-const AdminDashboard = ({ currentUser, setView, users, jobs, reports, actionLogs, toggleUserLock, deleteJob, showToast, handleOpenEditModal, handleReportAction, handleReviewStatusChange }: { currentUser: CurrentUser, setView: (view: AppView) => void, users: User[], jobs: Job[], reports: Report[], actionLogs: ActionLog[], toggleUserLock: (userId: number) => void, deleteJob: (jobId: number) => void, showToast: (message: string) => void, handleOpenEditModal: (job: Job) => void, handleReportAction: (reportId: number, action: 'resolve') => void, handleReviewStatusChange: (jobId: number, reviewIndex: number, newStatus: Review['status']) => void }) => {
+const AdminDashboard = ({ currentUser, handleNavigate, users, jobs, reports, actionLogs, toggleUserLock, deleteJob, showToast, handleOpenEditModal, handleReportAction, handleReviewStatusChange }: { currentUser: CurrentUser, handleNavigate: (view: AppView) => void, users: User[], jobs: Job[], reports: Report[], actionLogs: ActionLog[], toggleUserLock: (userId: number) => void, deleteJob: (jobId: number) => void, showToast: (message: string) => void, handleOpenEditModal: (job: Job) => void, handleReportAction: (reportId: number, action: 'resolve') => void, handleReviewStatusChange: (jobId: number, reviewIndex: number, newStatus: Review['status']) => void }) => {
     const [activeTab, setActiveTab] = useState<'jobs' | 'users' | 'moderation' | 'logs'>('jobs');
     if (!currentUser || currentUser.role !== 'admin') {
-        setView('main');
+        handleNavigate('main');
         return null;
     }
     
@@ -1474,17 +1498,23 @@ const AdminDashboard = ({ currentUser, setView, users, jobs, reports, actionLogs
 
 const ForbiddenPage = ({ onSimulateTrustedIp }: { onSimulateTrustedIp: () => void }) => (
     <main className="container mx-auto p-6 flex justify-center items-center h-[calc(100vh-68px)]">
-        <div className="text-center bg-white p-10 rounded-lg shadow-lg">
+        <div className="text-center bg-white p-10 rounded-lg shadow-lg max-w-lg">
             <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-16 w-16 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
             </svg>
             <h1 className="text-3xl font-bold text-red-600 mt-4 mb-2">403 - Truy cập bị cấm</h1>
-            <p className="text-gray-700 mb-6">Địa chỉ IP của bạn không có trong danh sách được phép truy cập vào khu vực quản trị.</p>
+            <p className="text-gray-700 mb-4">
+                Đây là một tính năng bảo mật. Khu vực quản trị chỉ cho phép truy cập từ các địa chỉ IP được tin cậy. 
+                Địa chỉ IP của bạn không nằm trong danh sách này.
+            </p>
+            <p className="text-gray-600 text-sm mb-6">
+                Trong môi trường thực tế, quản trị viên sẽ cần thêm IP của Vercel vào danh sách cho phép.
+            </p>
             <button
                 onClick={onSimulateTrustedIp}
                 className="bg-gray-200 text-gray-800 px-4 py-2 rounded-md text-sm hover:bg-gray-300"
             >
-                (Dev) Giả lập IP tin cậy
+                (Mô phỏng) Bỏ qua kiểm tra IP cho phiên này
             </button>
         </div>
     </main>
@@ -1536,14 +1566,13 @@ const PrivateChatModal = ({ session, currentUser, users, job, onClose, onSendMes
 // --- MAIN APP COMPONENT ---
 const App = () => {
     // --- STATE MANAGEMENT ---
-    const [jobs, setJobs] = useState<Job[]>(mockJobsDatabase);
-    const [users, setUsers] = useState<User[]>(mockUsersDatabase);
-    const [payments, setPayments] = useState<Payment[]>(mockPaymentsDatabase);
-    const [reports, setReports] = useState<Report[]>([]);
-    const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
-    const [privateChats, setPrivateChats] = useState<PrivateChatSession[]>([]);
-    const [applications, setApplications] = useState<Application[]>([]);
-
+    const [jobs, setJobs] = useState<Job[]>(initialJobs);
+    const [users, setUsers] = useState<User[]>(initialUsers);
+    const [payments, setPayments] = useState<Payment[]>(initialPayments);
+    const [reports, setReports] = useState<Report[]>(initialReports);
+    const [actionLogs, setActionLogs] = useState<ActionLog[]>(initialActionLogs);
+    const [privateChats, setPrivateChats] = useState<PrivateChatSession[]>(initialPrivateChats);
+    const [applications, setApplications] = useState<Application[]>(initialApplications);
 
     const [view, setView] = useState<AppView>('main');
     const [currentUser, setCurrentUser] = useState<CurrentUser>(null);
@@ -1579,6 +1608,20 @@ const App = () => {
         setToast({ message, id: Date.now() });
         setTimeout(() => setToast(null), 3000);
     }, []);
+
+    // --- NAVIGATION HANDLER ---
+    const handleNavigate = useCallback((targetView: AppView) => {
+        const currentView = view;
+        const isAdminArea = (v: AppView) => ['adminDashboard', 'adminLogin', 'forbidden'].includes(v);
+        const isPublicArea = (v: AppView) => ['main', 'login', 'signup'].includes(v);
+
+        if (isAdminArea(currentView) && isPublicArea(targetView)) {
+            if (window.location.hash) {
+                history.pushState("", document.title, window.location.pathname + window.location.search);
+            }
+        }
+        setView(targetView);
+    }, [view]);
     
     // --- ADMIN ACTION LOGGING ---
     const logAdminAction = useCallback((action: string) => {
@@ -1595,14 +1638,24 @@ const App = () => {
     }, [currentUser]);
 
     // --- EFFECTS ---
+    // Data Persistence Effects
+    useEffect(() => { localStorage.setItem('workhub_jobs', JSON.stringify(jobs)); }, [jobs]);
+    useEffect(() => { localStorage.setItem('workhub_users', JSON.stringify(users)); }, [users]);
+    useEffect(() => { localStorage.setItem('workhub_payments', JSON.stringify(payments)); }, [payments]);
+    useEffect(() => { localStorage.setItem('workhub_reports', JSON.stringify(reports)); }, [reports]);
+    useEffect(() => { localStorage.setItem('workhub_actionLogs', JSON.stringify(actionLogs)); }, [actionLogs]);
+    useEffect(() => { localStorage.setItem('workhub_privateChats', JSON.stringify(privateChats)); }, [privateChats]);
+    useEffect(() => { localStorage.setItem('workhub_applications', JSON.stringify(applications)); }, [applications]);
+
+
     // Session Persistence Effect
     useEffect(() => {
         try {
             const savedSession = localStorage.getItem('workhub-session');
             if (savedSession) {
                 const user: CurrentUser = JSON.parse(savedSession);
-                 // A quick check to ensure the user from storage is valid
-                const userExistsInDb = mockUsersDatabase.some(dbUser => dbUser.id === user?.id);
+                 // Check if the user from storage is valid against the initial user list
+                const userExistsInDb = initialUsers.some(dbUser => dbUser.id === user?.id);
                 if (user && userExistsInDb) {
                     setCurrentUser(user);
                 } else {
@@ -1624,9 +1677,12 @@ const App = () => {
             } catch (error) {
                 console.error("Failed to initialize Google AI:", error);
                 setIsAiReady(false);
+                setChatMessages([{ sender: 'bot', text: 'Rất tiếc, trợ lý AI hiện không khả dụng do lỗi cấu hình. Vui lòng thử lại sau.' }]);
             }
         } else {
             console.warn("Google API Key is missing.");
+            setIsAiReady(false);
+            setChatMessages([{ sender: 'bot', text: 'Trợ lý AI hiện không khả dụng. Vui lòng đảm bảo API Key đã được cung cấp trong biến môi trường của Vercel.' }]);
         }
     }, []);
 
@@ -1662,16 +1718,14 @@ const App = () => {
 
     useEffect(() => {
         const handleHashChange = () => {
-            if (window.location.hash === '#secure-panel-49cax' && isIpTrusted) {
-                setView('adminLogin');
-            } else if (window.location.hash === '#secure-panel-49cax' && !isIpTrusted) {
-                setView('forbidden');
+            if (window.location.hash === '#secure-panel-49cax') {
+                 handleNavigate(isIpTrusted ? 'adminLogin' : 'forbidden');
             }
         };
         window.addEventListener('hashchange', handleHashChange);
-        handleHashChange();
+        handleHashChange(); // Check on initial load
         return () => window.removeEventListener('hashchange', handleHashChange);
-    }, [isIpTrusted]);
+    }, [isIpTrusted, handleNavigate]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -1684,7 +1738,7 @@ const App = () => {
     }, []);
 
     // --- DATA & FILTERS ---
-    const uniqueIndustries = useMemo(() => [...new Set(mockJobsDatabase.map(j => j.industry))], []);
+    const uniqueIndustries = useMemo(() => [...new Set(jobs.map(j => j.industry))], [jobs]);
 
     const filteredJobs = useMemo(() => {
         let jobsToFilter = showOnlySaved ? jobs.filter(j => savedJobIds.has(j.id)) : jobs;
@@ -1753,23 +1807,23 @@ const App = () => {
             delete (userToStore as any).passwordHash;
             setCurrentUser(userToStore);
             localStorage.setItem('workhub-session', JSON.stringify(userToStore));
-            setView(user.role === 'admin' ? 'adminDashboard' : 'main');
+            handleNavigate(user.role === 'admin' ? 'adminDashboard' : 'main');
             showToast(`Chào mừng ${user.name}!`);
             return true;
         }
         showToast("Email hoặc mật khẩu không chính xác.");
         return false;
-    }, [users, showToast]);
+    }, [users, showToast, handleNavigate]);
 
     const handleLogout = useCallback(() => {
         setCurrentUser(null);
         localStorage.removeItem('workhub-session');
-        setView('main');
+        handleNavigate('main');
         showToast("Bạn đã đăng xuất.");
-    }, [showToast]);
+    }, [showToast, handleNavigate]);
 
     const handleSignup = useCallback((data: any): boolean => {
-        if (mockUsersDatabase.some(u => u.email.toLowerCase() === data.email.toLowerCase())) {
+        if (users.some(u => u.email.toLowerCase() === data.email.toLowerCase())) {
             showToast("Email này đã được đăng ký.");
             return false;
         }
@@ -1782,12 +1836,11 @@ const App = () => {
             role: data.role,
             isLocked: false,
         };
-        mockUsersDatabase.push(newUser);
-        setUsers([...mockUsersDatabase]);
+        setUsers(prev => [...prev, newUser]);
         showToast("Đăng ký thành công! Vui lòng đăng nhập.");
-        setView('login');
+        handleNavigate('login');
         return true;
-    }, [showToast]);
+    }, [showToast, users, handleNavigate]);
     
     const handlePostJob = (jobData: any, isFeatured: boolean) => {
         if (!currentUser) return;
@@ -1806,8 +1859,7 @@ const App = () => {
         if (isFeatured) {
             setJobDataForPayment({ ...newJob, isFeatured: true });
         } else {
-            mockJobsDatabase.unshift(newJob);
-            setJobs([...mockJobsDatabase]);
+            setJobs(prev => [newJob, ...prev]);
             setNewJobNotifications(prev => [newJob, ...prev].slice(0, 5));
             setIsPostingModalOpen(false);
             showToast("Đăng tin thành công!");
@@ -1816,17 +1868,16 @@ const App = () => {
     
     const handlePaymentSuccess = () => {
         if (!jobDataForPayment || !currentUser) return;
-        mockJobsDatabase.unshift(jobDataForPayment);
-        mockPaymentsDatabase.push({
+        const newPayment: Payment = {
             id: `TXN${Date.now()}`,
             userId: currentUser.id,
             date: new Date().toISOString().split('T')[0],
             service: 'Tin Nổi Bật',
             amount: 99000,
             status: 'Completed',
-        });
-        setJobs([...mockJobsDatabase]);
-        setPayments([...mockPaymentsDatabase]);
+        };
+        setJobs(prev => [jobDataForPayment, ...prev]);
+        setPayments(prev => [...prev, newPayment]);
         setNewJobNotifications(prev => [jobDataForPayment, ...prev].slice(0, 5));
         setJobDataForPayment(null);
         setIsPostingModalOpen(false);
@@ -1834,11 +1885,12 @@ const App = () => {
     };
 
     const handleAddNewReview = useCallback((jobId: number, review: Omit<Review, 'status'>) => {
-        const jobIndex = mockJobsDatabase.findIndex(job => job.id === jobId);
-        if (jobIndex > -1) {
-            mockJobsDatabase[jobIndex].reviews.unshift({ ...review, status: 'pending' });
-            setJobs([...mockJobsDatabase]);
-        }
+        const newReview = { ...review, status: 'pending' as const };
+        setJobs(prevJobs => prevJobs.map(job => 
+            job.id === jobId 
+                ? { ...job, reviews: [newReview, ...job.reviews] }
+                : job
+        ));
         showToast("Cảm ơn bạn đã gửi đánh giá! Đánh giá của bạn đang chờ duyệt.");
     }, [showToast]);
 
@@ -1905,7 +1957,7 @@ const App = () => {
     const handleStartPrivateChat = (job: Job) => {
         if (!currentUser) {
             showToast("Vui lòng đăng nhập để chat với nhà tuyển dụng.");
-            setView('login');
+            handleNavigate('login');
             setSelectedJob(null);
             return;
         }
@@ -1947,35 +1999,28 @@ const App = () => {
     };
     
     const toggleUserLock = useCallback((userId: number) => {
-        const userIndex = mockUsersDatabase.findIndex(user => user.id === userId);
-        if (userIndex > -1) {
-            const user = mockUsersDatabase[userIndex];
-            user.isLocked = !user.isLocked;
-            setUsers([...mockUsersDatabase]);
-            logAdminAction(`${user.isLocked ? 'Khóa' : 'Mở khóa'} người dùng ${user.email} (ID: ${userId})`);
-            showToast(`Đã ${user.isLocked ? 'khóa' : 'mở khóa'} tài khoản.`);
-        }
+        setUsers(prevUsers => prevUsers.map(user => {
+            if (user.id === userId) {
+                const updatedUser = { ...user, isLocked: !user.isLocked };
+                 logAdminAction(`${updatedUser.isLocked ? 'Khóa' : 'Mở khóa'} người dùng ${updatedUser.email} (ID: ${userId})`);
+                 showToast(`Đã ${updatedUser.isLocked ? 'khóa' : 'mở khóa'} tài khoản.`);
+                return updatedUser;
+            }
+            return user;
+        }));
     }, [logAdminAction, showToast]);
 
     const deleteJob = useCallback((jobId: number) => {
         if (window.confirm("Bạn có chắc chắn muốn xóa vĩnh viễn tin đăng này không?")) {
-            const index = mockJobsDatabase.findIndex(job => job.id === jobId);
-            if (index > -1) {
-                mockJobsDatabase.splice(index, 1);
-                setJobs([...mockJobsDatabase]);
-                logAdminAction(`Xóa tin đăng ID: ${jobId}`);
-                showToast("Đã xóa tin đăng.");
-            }
+            setJobs(prev => prev.filter(job => job.id !== jobId));
+            logAdminAction(`Xóa tin đăng ID: ${jobId}`);
+            showToast("Đã xóa tin đăng.");
         }
     }, [logAdminAction, showToast]);
     
     const handleUpdateJob = (updatedJob: Job) => {
-        const index = mockJobsDatabase.findIndex(job => job.id === updatedJob.id);
-        if (index > -1) {
-            mockJobsDatabase[index] = updatedJob;
-            setJobs([...mockJobsDatabase]);
-            logAdminAction(`Cập nhật tin đăng "${updatedJob.title}" (ID: ${updatedJob.id})`);
-        }
+        setJobs(prevJobs => prevJobs.map(job => job.id === updatedJob.id ? updatedJob : job));
+        logAdminAction(`Cập nhật tin đăng "${updatedJob.title}" (ID: ${updatedJob.id})`);
     };
 
     const handleReportAction = (reportId: number) => {
@@ -1985,12 +2030,15 @@ const App = () => {
     };
 
     const handleReviewStatusChange = (jobId: number, reviewIndex: number, newStatus: Review['status']) => {
-        const jobIndex = mockJobsDatabase.findIndex(job => job.id === jobId);
-        if (jobIndex > -1) {
-            mockJobsDatabase[jobIndex].reviews[reviewIndex].status = newStatus;
-            setJobs([...mockJobsDatabase]);
-            logAdminAction(`Thay đổi trạng thái đánh giá (Job ID: ${jobId}, Review Index: ${reviewIndex}) thành ${newStatus}`);
-        }
+        setJobs(prevJobs => prevJobs.map(job => {
+            if (job.id === jobId) {
+                const newReviews = [...job.reviews];
+                newReviews[reviewIndex].status = newStatus;
+                return { ...job, reviews: newReviews };
+            }
+            return job;
+        }));
+        logAdminAction(`Thay đổi trạng thái đánh giá (Job ID: ${jobId}, Review Index: ${reviewIndex}) thành ${newStatus}`);
     };
     
     const handleSubmitReport = (reason: string, details: string) => {
@@ -2051,15 +2099,15 @@ const App = () => {
     const renderView = () => {
         switch (view) {
             case 'login':
-                return <LoginPage handleLogin={handleLogin} showToast={showToast} setView={setView} users={users} />;
+                return <LoginPage handleLogin={handleLogin} showToast={showToast} handleNavigate={handleNavigate} users={users} />;
             case 'signup':
-                return <SignupPage handleSignup={handleSignup} setView={setView} showToast={showToast} />;
+                return <SignupPage handleSignup={handleSignup} handleNavigate={handleNavigate} showToast={showToast} />;
             case 'employerDashboard':
                 return <EmployerDashboard currentUser={currentUser} jobs={jobs} payments={payments} privateChats={privateChats} users={users} handleEditJob={setJobToEdit} handleDeleteJob={deleteJob} openPrivateChat={setActivePrivateChat}/>;
             case 'adminDashboard':
-                return <AdminDashboard currentUser={currentUser} setView={setView} users={users} jobs={jobs} reports={reports} actionLogs={actionLogs} toggleUserLock={toggleUserLock} deleteJob={deleteJob} showToast={showToast} handleOpenEditModal={setJobToEdit} handleReportAction={handleReportAction} handleReviewStatusChange={handleReviewStatusChange} />;
+                return <AdminDashboard currentUser={currentUser} handleNavigate={handleNavigate} users={users} jobs={jobs} reports={reports} actionLogs={actionLogs} toggleUserLock={toggleUserLock} deleteJob={deleteJob} showToast={showToast} handleOpenEditModal={setJobToEdit} handleReportAction={handleReportAction} handleReviewStatusChange={handleReviewStatusChange} />;
             case 'adminLogin':
-                return <LoginPage handleLogin={handleLogin} showToast={showToast} setView={setView} users={users} />; // Simplified, can be a separate component
+                return <LoginPage handleLogin={handleLogin} showToast={showToast} handleNavigate={handleNavigate} users={users} />; // Simplified, can be a separate component
             case 'forbidden':
                 return <ForbiddenPage onSimulateTrustedIp={() => setIsIpTrusted(true)} />;
             case 'main':
@@ -2074,7 +2122,7 @@ const App = () => {
         <>
             <Header
                 currentUser={currentUser}
-                setView={setView}
+                handleNavigate={handleNavigate}
                 handleLogout={handleLogout}
                 notificationRef={notificationRef}
                 handleToggleNotifications={() => setIsNotificationOpen(!isNotificationOpen)}
