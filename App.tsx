@@ -24,8 +24,10 @@ type Job = {
     hotline: string;
     officeLocation: string;
     officeGps: [number, number];
+    officePlusCode?: string; // Plus Code for interview location
   };
   workLocationGps: [number, number];
+  workPlusCode?: string; // Plus Code for work location
   schedule: string;
   reviews: Review[];
   isFeatured: boolean;
@@ -112,221 +114,54 @@ type BotStatus = 'idle' | 'thinking';
 // In a real production environment, these values should be loaded from environment variables (.env)
 // and not be hardcoded in the source code for security reasons.
 const CONFIG = {
-    GOOGLE_API_KEY: process.env.API_KEY,
+    // Defensively access process.env to prevent crashes in browser environments
+    // where 'process' might not be defined. This fixes the blank screen error.
+    GOOGLE_API_KEY: (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined,
 };
 
-
-// --- REALISTIC & ACCURATE MOCK DATA (ACTS AS OUR DATABASE) ---
-const mockUsersDatabase: User[] = [
-    { id: 1, email: 'tuyendung@7-eleven.vn', passwordHash: 'hashed_password_123', name: '7-Eleven', phone: '0901234567', role: 'employer', isLocked: false },
-    { id: 2, email: 'hr@thecoffeehouse.vn', passwordHash: 'hashed_password_123', name: 'The Coffee House', phone: '0987654321', role: 'employer', isLocked: false },
-    { id: 3, email: 'recruitment@kfcvietnam.com.vn', passwordHash: 'hashed_password_123', name: 'KFC', phone: '0912345678', role: 'employer', isLocked: true },
-    { id: 4, email: 'tuyendung@guardian.com.vn', passwordHash: 'hashed_password_123', name: 'Guardian', phone: '0998877665', role: 'employer', isLocked: false },
-    { id: 100, email: 'admin@workhub.vn', passwordHash: 'admin_pass', name: 'WorkHub Admin', phone: '0111222333', role: 'admin', isLocked: false },
-    { id: 201, email: 'applicant1@email.com', passwordHash: 'hashed_password_123', name: 'Nguyễn Văn An', phone: '0911111111', role: 'jobseeker', isLocked: false }
-];
-
-const mockJobsDatabase: Job[] = [
-    {
-        id: 1,
-        title: "Nhân viên Bán hàng (Part-time)",
-        company: "7-Eleven",
-        companyId: 1,
-        logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/7-eleven_logo.svg/1200px-7-eleven_logo.svg.png",
-        location: "24 Tôn Thất Tùng, P. Bến Thành, Quận 1", // Specific address
-        salary: "5 - 8 triệu",
-        rating: 4.5,
-        reviewCount: 182,
-        isVerified: true,
-        postedDate: "2 giờ trước",
-        description: "Chào đón khách hàng, tư vấn sản phẩm, thực hiện thanh toán và giữ gìn vệ sinh cửa hàng. Làm việc theo ca xoay linh hoạt, phù hợp cho sinh viên.",
-        requirements: ["Nam/Nữ từ 18 - 25 tuổi", "Nhanh nhẹn, trung thực, có trách nhiệm", "Không yêu cầu kinh nghiệm, sẽ được đào tạo"],
-        benefits: ["Lương thưởng theo giờ cạnh tranh", "Môi trường làm việc năng động", "Giảm giá đặc biệt cho nhân viên"],
-        industry: "Bán lẻ",
-        employmentType: "Bán thời gian",
-        interviewAddress: "Tầng 7, Tòa nhà Saigon Trade Center, 37 Tôn Đức Thắng, Q.1",
-        recruiter: {
-            name: "Phòng Nhân sự 7-Eleven Việt Nam",
-            email: "tuyendung@7-eleven.vn",
-            hotline: "0901234567",
-            officeLocation: "Tầng 7, Tòa nhà Saigon Trade Center, 37 Tôn Đức Thắng, Q.1",
-            officeGps: [10.7756, 106.7045]
-        },
-        workLocationGps: [10.7701, 106.6947], // Accurate GPS for 24 Tôn Thất Tùng
-        schedule: "Ca xoay 4-8 tiếng/ngày. Sáng: 6h-14h, Chiều: 14h-22h, Tối: 22h-6h.",
-        reviews: [
-            { author: "Sinh viên ẩn danh", comment: "Làm gần nhà, lương ổn, các anh chị rất thân thiện.", rating: 5, status: 'visible' },
-            { author: "Người đi làm", comment: "Công việc đơn giản, phù hợp kiếm thêm thu nhập.", rating: 4, status: 'visible' }
-        ],
-        isFeatured: false,
-    },
-    {
-        id: 2,
-        title: "Nhân viên Pha chế (Barista)",
-        company: "The Coffee House",
-        companyId: 2,
-        logo: "https://upload.wikimedia.org/wikipedia/vi/thumb/c/ce/The_Coffee_House_logo.png/800px-The_Coffee_House_logo.png",
-        location: "159-161 Nguyễn Du, P. Bến Thành, Quận 1", // Switched to a Q1 location for variety
-        salary: "6 - 9 triệu",
-        rating: 4.7,
-        reviewCount: 250,
-        isVerified: true,
-        postedDate: "Hôm qua",
-        description: "Pha chế các loại đồ uống theo công thức, đảm bảo chất lượng sản phẩm và phục vụ khách hàng một cách chuyên nghiệp.",
-        requirements: ["Đam mê cà phê và ngành dịch vụ", "Có kinh nghiệm là một lợi thế", "Thái độ vui vẻ, tích cực"],
-        benefits: ["Được đào tạo bài bản về cà phê", "Lộ trình thăng tiến rõ ràng", "Bảo hiểm đầy đủ theo luật lao động"],
-        industry: "F&B",
-        employmentType: "Toàn thời gian",
-        interviewAddress: "86-88 Cao Thắng, Phường 4, Quận 3, TP.HCM",
-        recruiter: {
-            name: "Bộ phận Tuyển dụng The Coffee House",
-            email: "hr@thecoffeehouse.vn",
-            hotline: "0987654321",
-            officeLocation: "86-88 Cao Thắng, Phường 4, Quận 3, TP.HCM",
-            officeGps: [10.7725, 106.6853]
-        },
-        workLocationGps: [10.7731, 106.6957], // Accurate GPS for 159 Nguyễn Du
-        schedule: "Ca 8 tiếng/ngày, xoay ca theo sự sắp xếp của quản lý. Tuần nghỉ 1 ngày.",
-        reviews: [
-            { author: "Barista", comment: "Môi trường chuyên nghiệp, học được nhiều thứ.", rating: 5, status: 'visible' },
-            { author: "Cựu nhân viên", comment: "Áp lực nhưng xứng đáng.", rating: 4, status: 'visible' }
-        ],
-        isFeatured: true,
-    },
-    {
-        id: 3,
-        title: "Nhân viên Phục vụ Bàn",
-        company: "KFC",
-        companyId: 3,
-        logo: "https://upload.wikimedia.org/wikipedia/vi/thumb/7/7e/KFC_logo.svg/1200px-KFC_logo.svg.png",
-        location: "20 An Dương Vương, Phường 9, Quận 5", // Specific address
-        salary: "5 - 7 triệu",
-        rating: 4.2,
-        reviewCount: 315,
-        isVerified: true,
-        postedDate: "3 ngày trước",
-        description: "Tiếp nhận order, phục vụ đồ ăn và thức uống, đảm bảo sự hài lòng của khách hàng và duy trì vệ sinh khu vực ăn uống.",
-        requirements: ["Từ 16 tuổi trở lên", "Siêng năng, chịu khó", "Có thể làm việc vào cuối tuần và ngày lễ"],
-        benefits: ["Bữa ăn miễn phí theo ca", "Lương tháng 13", "Cơ hội trở thành quản lý cửa hàng"],
-        industry: "F&B",
-        employmentType: "Bán thời gian",
-        interviewAddress: "Tầng 12, Tòa nhà Blue Sky, 01 Bạch Đằng, P.2, Q.Tân Bình",
-        recruiter: {
-            name: "KFC Việt Nam Tuyển Dụng",
-            email: "recruitment@kfcvietnam.com.vn",
-            hotline: "0912345678",
-            officeLocation: "Tầng 12, Tòa nhà Blue Sky, 01 Bạch Đằng, P.2, Q.Tân Bình",
-            officeGps: [10.8015, 106.6625]
-        },
-        workLocationGps: [10.7570, 106.6672], // Accurate GPS for 20 An Dương Vương
-        schedule: "Linh hoạt đăng ký ca 4-6 tiếng/ngày. Ưu tiên sinh viên.",
-        reviews: [
-            { author: "Sinh viên", comment: "Dễ xin việc, không cần kinh nghiệm, quản lý dễ tính.", rating: 4, status: 'visible' },
-        ],
-        isFeatured: false,
-    },
-    {
-        id: 4,
-        title: "Nhân viên Tư vấn Mỹ phẩm",
-        company: "Guardian",
-        companyId: 4,
-        logo: "https://cdn.haitrieu.com/wp-content/uploads/2021/11/Logo-Guardian-White.png",
-        location: "483 Sư Vạn Hạnh, Phường 12, Quận 10", // Specific address
-        salary: "8 - 12 triệu",
-        rating: 4.6,
-        reviewCount: 98,
-        isVerified: true,
-        postedDate: "5 ngày trước",
-        description: "Tư vấn các sản phẩm chăm sóc da và mỹ phẩm phù hợp với nhu cầu của khách hàng. Sắp xếp, trưng bày hàng hóa và quản lý tồn kho.",
-        requirements: ["Yêu thích mỹ phẩm, có kiến thức về chăm sóc da", "Kỹ năng giao tiếp tốt", "Ngoại hình ưa nhìn"],
-        benefits: ["Hoa hồng theo doanh số", "Được training sản phẩm mới thường xuyên", "Mua sản phẩm với giá ưu đãi của nhân viên"],
-        industry: "Bán lẻ",
-        employmentType: "Toàn thời gian",
-        interviewAddress: "172 Hai Bà Trưng, Phường Đa Kao, Quận 1, TP.HCM",
-        recruiter: {
-            name: "Guardian Vietnam HR",
-            email: "tuyendung@guardian.com.vn",
-            hotline: "0998877665",
-            officeLocation: "172 Hai Bà Trưng, Phường Đa Kao, Quận 1, TP.HCM",
-            officeGps: [10.7858, 106.6947]
-        },
-        workLocationGps: [10.7719, 106.6690], // Accurate GPS for 483 Sư Vạn Hạnh
-        schedule: "Làm việc theo ca 8 tiếng, xoay ca. Ca 1: 8h30-16h30, Ca 2: 14h-22h.",
-        reviews: [
-            { author: "Beauty Advisor", comment: "Lương thưởng tốt, được tiếp xúc nhiều sản phẩm mới.", rating: 5, status: 'visible' },
-            { author: "Khách hàng", comment: "Nhân viên ở đây tư vấn rất nhiệt tình.", rating: 5, status: 'visible' },
-        ],
-        isFeatured: false,
+// --- REAL Geocoding API ---
+// Replaced the mock function with a real call to the Google Maps Geocoding API
+// to provide accurate coordinates for any valid address.
+const geocodeAddress = async (address: string): Promise<[number, number] | null> => {
+    if (!address || !CONFIG.GOOGLE_API_KEY) {
+        console.error("Address is empty or Google API Key is missing.");
+        return null;
     }
-];
+    const encodedAddress = encodeURIComponent(address);
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&key=${CONFIG.GOOGLE_API_KEY}`;
 
-const mockPaymentsDatabase: Payment[] = [
-    { id: 'TXN001', userId: 1, date: '2024-07-15', service: 'Tin Nổi Bật', amount: 99000, status: 'Completed' },
-    { id: 'TXN002', userId: 2, date: '2024-07-20', service: 'Tin Nổi Bật', amount: 99000, status: 'Completed' },
-    { id: 'TXN003', userId: 1, date: '2024-07-22', service: 'Tin Nổi Bật', amount: 99000, status: 'Completed' },
-    { id: 'TXN004', userId: 4, date: '2024-07-25', service: 'Tin Nổi Bật', amount: 99000, status: 'Completed' },
-    { id: 'TXN005', userId: 2, date: '2024-07-28', service: 'Tin Nổi Bật', amount: 99000, status: 'Pending' },
-];
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
 
-// --- DATA PERSISTENCE HELPERS ---
-const safeJSONParse = <T,>(key: string, fallback: T): T => {
-    const item = localStorage.getItem(key);
-    if (item) {
-        try {
-            return JSON.parse(item);
-        } catch (e) {
-            console.warn(`Could not parse ${key} from localStorage, using initial data.`);
-            return fallback;
+        if (data.status === 'OK' && data.results.length > 0) {
+            const location = data.results[0].geometry.location;
+            return [location.lat, location.lng];
+        } else {
+            console.warn(`Geocoding failed for address "${address}". Status: ${data.status}`);
+            return null;
         }
+    } catch (error) {
+        console.error("Error calling Geocoding API:", error);
+        return null;
     }
-    return fallback;
 };
 
-// Load initial data from localStorage or fallback to mock data
-const initialJobs = safeJSONParse('workhub_jobs', mockJobsDatabase);
-const initialUsers = safeJSONParse('workhub_users', mockUsersDatabase);
-const initialPayments = safeJSONParse('workhub_payments', mockPaymentsDatabase);
-const initialReports = safeJSONParse<Report[]>('workhub_reports', []);
-const initialActionLogs = safeJSONParse<ActionLog[]>('workhub_actionLogs', []);
-const initialPrivateChats = safeJSONParse<PrivateChatSession[]>('workhub_privateChats', []);
-const initialApplications = safeJSONParse<Application[]>('workhub_applications', []);
 
+const geocodePlusCodeOrAddress = async (input: string): Promise<{ coords: [number, number]; plusCode?: string } | null> => {
+    const plusCodeRegex = /\b[2-9CFGHJMPQRVWX]{4}\+[2-9CFGHJMPQRVWX]{2,}\b/i;
+    const trimmedInput = input.trim();
+    const plusCodeMatch = trimmedInput.match(plusCodeRegex);
 
-// --- MOCK GEOCoding API ---
-// In a real application, this would call an external service like Google Maps Geocoding API.
-// For this simulation, it recognizes specific addresses from mock data to ensure accuracy.
-const geocodeAddress = (address: string): Promise<[number, number] | null> => {
-    return new Promise(resolve => {
-        setTimeout(() => {
-            const normalizedAddress = address.toLowerCase().trim();
-            // Map known addresses to coordinates
-            const knownLocations: { [key: string]: [number, number] } = {
-                '24 tôn thất tùng': [10.7701, 106.6947],
-                '159-161 nguyễn du': [10.7731, 106.6957],
-                '20 an dương vương': [10.7570, 106.6672],
-                '483 sư vạn hạnh': [10.7719, 106.6690],
-                '37 tôn đức thắng': [10.7756, 106.7045],
-                '86-88 cao thắng': [10.7725, 106.6853],
-                '01 bạch đằng': [10.8015, 106.6625],
-                '172 hai bà trưng': [10.7858, 106.6947],
-            };
+    // Prioritize Plus Code if found, as it's more accurate
+    const addressToGeocode = plusCodeMatch ? plusCodeMatch[0] : trimmedInput.replace(/,+/g, ',').replace(/\s\s+/g, ' ');
 
-            const match = Object.keys(knownLocations).find(key => normalizedAddress.includes(key));
-
-            if (match) {
-                resolve(knownLocations[match]);
-            } else {
-                resolve(null); // Address not found/unrecognized (ZERO_RESULTS equivalent)
-            }
-        }, 500); // Simulate network delay
-    });
-};
-
-const normalizeAndGeocodeAddress = (input: string): Promise<[number, number] | null> => {
-    // Clean the address string before geocoding. This function now assumes text-only input
-    // as URL validation is handled at the form level.
-    const cleanedAddress = input.trim().replace(/,+/g, ',').replace(/\s\s+/g, ' ');
-    return geocodeAddress(cleanedAddress);
+    const coords = await geocodeAddress(addressToGeocode);
+    if (coords) {
+        return { coords, plusCode: plusCodeMatch ? plusCodeMatch[0] : undefined };
+    }
+    
+    return null;
 };
 
 
@@ -742,8 +577,8 @@ const JobDetailModal = ({ job, onClose, handleAddNewReview, showToast, handleSta
                         </div>
                         <div className="pb-4 border-b">
                             <h4 className="text-lg font-bold text-gray-900 mb-3 border-b-2 pb-2">Vị trí & Địa điểm</h4>
-                            <p className="text-base text-gray-900 mb-2"><strong>Nơi làm việc:</strong> {job.location}</p>
-                            {job.interviewAddress && <p className="text-base text-gray-900 mb-2"><strong>Địa chỉ phỏng vấn:</strong> {job.interviewAddress}</p>}
+                            <p className="text-base text-gray-900 mb-2"><strong>Nơi làm việc:</strong> {job.location} {job.workPlusCode && <span className="text-xs font-mono bg-gray-200 text-gray-700 p-1 rounded">({job.workPlusCode})</span>}</p>
+                            {job.interviewAddress && <p className="text-base text-gray-900 mb-2"><strong>Địa chỉ phỏng vấn:</strong> {job.interviewAddress} {job.recruiter.officePlusCode && <span className="text-xs font-mono bg-gray-200 text-gray-700 p-1 rounded">({job.recruiter.officePlusCode})</span>}</p>}
                             <a href={`https://www.google.com/maps?q=${job.workLocationGps[0]},${job.workLocationGps[1]}`} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-500 hover:underline">Xem bản đồ nơi làm việc</a>
                             <div className="mt-3">
                                 <button onClick={() => setShowInterviewMap(!showInterviewMap)} className="text-sm font-semibold w-full text-left flex justify-between items-center">
@@ -779,7 +614,7 @@ const JobDetailModal = ({ job, onClose, handleAddNewReview, showToast, handleSta
 }
 
 const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void, onPost: (formData: any, isFeatured: boolean) => void, currentUser: CurrentUser }) => {
-    const [formData, setFormData] = useState<any>({ company: "Công ty TNHH ABC", title: "Nhân viên Marketing", logo: "https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg", location: "123 Đường ABC, Quận 1", salary: "Thoả thuận", benefits: "BHXH, Lương tháng 13", interviewAddress: "456 Đường XYZ, Quận 3", description: "Mô tả công việc...", schedule: "Giờ hành chính", requirements: "Yêu cầu...", industry: "Marketing", employmentType: "Toàn thời gian", recruiterEmail: "hr@abc.com", recruiterHotline: "0123456789" });
+    const [formData, setFormData] = useState<any>({ company: "Công ty TNHH ABC", title: "Nhân viên Marketing", logo: "https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg", location: "", salary: "Thoả thuận", benefits: "BHXH, Lương tháng 13", interviewAddress: "", description: "Mô tả công việc...", schedule: "Giờ hành chính", requirements: "Yêu cầu...", industry: "Marketing", employmentType: "Toàn thời gian", recruiterEmail: "hr@abc.com", recruiterHotline: "0123456789" });
     const [logoPreview, setLogoPreview] = useState<string | null>(formData.logo);
     const [formErrors, setFormErrors] = useState<any>({});
     const [postingType, setPostingType] = useState<'standard' | 'featured'>('standard');
@@ -811,21 +646,10 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const errors: any = {};
-        const urlPattern = /https?:\/\/|google\.com|googleusercontent\.com/i;
-
-        // --- Address Validation ---
-        if (urlPattern.test(formData.location)) {
-            errors.location = 'Vui lòng chỉ nhập địa chỉ đường phố (ví dụ: 159 Nguyễn Du, Phường Bến Thành, Quận 1).';
-        } else if (!formData.location) {
-             errors.location = "Bắt buộc.";
-        }
-        if (urlPattern.test(formData.interviewAddress)) {
-            errors.interviewAddress = 'Vui lòng chỉ nhập địa chỉ đường phố (ví dụ: 159 Nguyễn Du, Phường Bến Thành, Quận 1).';
-        } else if (!formData.interviewAddress) {
-            errors.interviewAddress = "Bắt buộc.";
-        }
         
-        // --- Other Validations ---
+        // --- Address & Other Validations ---
+        if (!formData.location) errors.location = "Bắt buộc.";
+        if (!formData.interviewAddress) errors.interviewAddress = "Bắt buộc.";
         if (!formData.recruiterEmail) errors.recruiterEmail = "Bắt buộc.";
         if (!formData.salary) errors.salary = "Bắt buộc.";
         if (!formData.benefits) errors.benefits = "Bắt buộc.";
@@ -901,13 +725,19 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
                             {formErrors.benefits && <p className="text-red-500 text-xs mt-1">{formErrors.benefits}</p>}
                         </div>
                         <div className="md:col-span-2">
-                            <label htmlFor="location" className="block text-sm font-medium text-gray-800 mb-1">Địa chỉ Nơi làm việc <span className="text-red-500">*</span></label>
-                            <input type="text" name="location" id="location" value={formData.location} onChange={handleChange} className="w-full border-gray-300 rounded-md" placeholder="VD: 123 Đường ABC, Phường X, Quận Y" />
+                             <label htmlFor="location" className="block text-sm font-medium text-gray-800 mb-1">Địa chỉ Nơi làm việc <span className="text-red-500">*</span></label>
+                             <div className="relative">
+                                <input type="text" name="location" id="location" value={formData.location} onChange={handleChange} className="w-full border-gray-300 rounded-md" placeholder="Enter Street Address or Plus Code (e.g., Q2C2+2R)" />
+                                <a href="https://maps.google.com/pluscodes/" target="_blank" rel="noopener noreferrer" className="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300">Get Plus Code</a>
+                             </div>
                             {formErrors.location && <p className="text-red-500 text-xs mt-1">{formErrors.location}</p>}
                         </div>
                         <div className="md:col-span-2">
                             <label htmlFor="interviewAddress" className="block text-sm font-medium text-gray-800 mb-1">Địa chỉ Phỏng vấn <span className="text-red-500">*</span></label>
-                            <input type="text" name="interviewAddress" id="interviewAddress" value={formData.interviewAddress} onChange={handleChange} className="w-full border-gray-300 rounded-md" placeholder="VD: 456 Đường XYZ, Phường A, Quận B"/>
+                             <div className="relative">
+                                <input type="text" name="interviewAddress" id="interviewAddress" value={formData.interviewAddress} onChange={handleChange} className="w-full border-gray-300 rounded-md" placeholder="Enter Street Address or Plus Code (e.g., Q2FX+67)"/>
+                                <a href="https://maps.google.com/pluscodes/" target="_blank" rel="noopener noreferrer" className="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300">Get Plus Code</a>
+                             </div>
                             {formErrors.interviewAddress && <p className="text-red-500 text-xs mt-1">{formErrors.interviewAddress}</p>}
                         </div>
                      </div>
@@ -1285,7 +1115,10 @@ const AdminLoginPage = ({ handleLogin, handleNavigate }: { handleLogin: (email: 
     );
 };
 
-const SignupPage = ({ handleSignup, handleNavigate, showToast }: { handleSignup: (data: any) => boolean, handleNavigate: (view: AppView) => void, showToast: (message: string) => void }) => {
+// FIX: Changed handleSignup prop type from `(data: any) => boolean` to `(data: any) => void`
+// to correctly handle the async `handleSignup` function passed from the parent App component,
+// which returns a Promise. The return value is not used here, so `void` is appropriate.
+const SignupPage = ({ handleSignup, handleNavigate, showToast }: { handleSignup: (data: any) => void, handleNavigate: (view: AppView) => void, showToast: (message: string) => void }) => {
     const [formData, setFormData] = useState({ email: '', password: '', confirmPassword: '', name: '', phone: '', role: 'jobseeker' });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -1590,13 +1423,14 @@ const PrivateChatModal = ({ session, currentUser, users, job, onClose, onSendMes
 // --- MAIN APP COMPONENT ---
 const App = () => {
     // --- STATE MANAGEMENT ---
-    const [jobs, setJobs] = useState<Job[]>(initialJobs);
-    const [users, setUsers] = useState<User[]>(initialUsers);
-    const [payments, setPayments] = useState<Payment[]>(initialPayments);
-    const [reports, setReports] = useState<Report[]>(initialReports);
-    const [actionLogs, setActionLogs] = useState<ActionLog[]>(initialActionLogs);
-    const [privateChats, setPrivateChats] = useState<PrivateChatSession[]>(initialPrivateChats);
-    const [applications, setApplications] = useState<Application[]>(initialApplications);
+    const [jobs, setJobs] = useState<Job[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
+    const [payments, setPayments] = useState<Payment[]>([]);
+    const [reports, setReports] = useState<Report[]>([]);
+    const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
+    const [privateChats, setPrivateChats] = useState<PrivateChatSession[]>([]);
+    const [applications, setApplications] = useState<Application[]>([]);
+    const [isDataLoaded, setIsDataLoaded] = useState(false);
 
     const [view, setView] = useState<AppView>('main');
     const [currentUser, setCurrentUser] = useState<CurrentUser>(null);
@@ -1624,6 +1458,45 @@ const App = () => {
 
     const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
 
+    // --- API & DATA HANDLING ---
+    const fetchData = useCallback(async () => {
+        try {
+            const res = await fetch('/api/data');
+            if (!res.ok) throw new Error('Failed to fetch data from server');
+            const data = await res.json();
+            setJobs(data.jobs || []);
+            setUsers(data.users || []);
+            setPayments(data.payments || []);
+            setReports(data.reports || []);
+            setActionLogs(data.actionLogs || []);
+            setPrivateChats(data.privateChats || []);
+            setApplications(data.applications || []);
+            setIsDataLoaded(true);
+        } catch (error) {
+            console.error("Error fetching data:", error);
+            showToast("Không thể tải dữ liệu từ máy chủ.");
+        }
+    }, []);
+
+    const updateServerData = useCallback(async (dataToUpdate: object) => {
+        try {
+             const res = await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dataToUpdate),
+            });
+            if (!res.ok) throw new Error('Failed to update server data');
+            // After a successful update, refresh all data from server to ensure consistency
+            await fetchData();
+            return true;
+        } catch (error) {
+            console.error("Error updating data:", error);
+            showToast("Lỗi: Không thể lưu thay đổi.");
+            return false;
+        }
+    }, [fetchData]);
+
+
     // --- TOAST NOTIFICATION ---
     const showToast = useCallback((message: string) => {
         setToast({ message, id: Date.now() });
@@ -1632,11 +1505,15 @@ const App = () => {
 
     // --- NAVIGATION HANDLER ---
     const handleNavigate = useCallback((targetView: AppView) => {
+        const path = targetView === 'adminDashboard' || targetView === 'adminLogin' ? '/admin' : '/';
+        if (window.location.pathname !== path) {
+            window.history.pushState({}, '', path);
+        }
         setView(targetView);
     }, []);
     
     // --- ADMIN ACTION LOGGING ---
-    const logAdminAction = useCallback((action: string) => {
+    const logAdminAction = useCallback(async (action: string) => {
         if (!currentUser || currentUser.role !== 'admin') return;
         const newLog: ActionLog = {
             id: Date.now(),
@@ -1646,19 +1523,26 @@ const App = () => {
             ipAddress: '127.0.0.1', // Simulated IP
             timestamp: new Date().toLocaleString('vi-VN')
         };
-        setActionLogs(prev => [newLog, ...prev]);
-    }, [currentUser]);
+        const updatedLogs = [newLog, ...actionLogs];
+        setActionLogs(updatedLogs); // Optimistic update
+        await updateServerData({ actionLogs: updatedLogs });
+    }, [currentUser, actionLogs, updateServerData]);
 
     // --- EFFECTS ---
-    // Data Persistence Effects
-    useEffect(() => { localStorage.setItem('workhub_jobs', JSON.stringify(jobs)); }, [jobs]);
-    useEffect(() => { localStorage.setItem('workhub_users', JSON.stringify(users)); }, [users]);
-    useEffect(() => { localStorage.setItem('workhub_payments', JSON.stringify(payments)); }, [payments]);
-    useEffect(() => { localStorage.setItem('workhub_reports', JSON.stringify(reports)); }, [reports]);
-    useEffect(() => { localStorage.setItem('workhub_actionLogs', JSON.stringify(actionLogs)); }, [actionLogs]);
-    useEffect(() => { localStorage.setItem('workhub_privateChats', JSON.stringify(privateChats)); }, [privateChats]);
-    useEffect(() => { localStorage.setItem('workhub_applications', JSON.stringify(applications)); }, [applications]);
+    // Initial Data Load
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
+    // Client-side routing based on URL path
+     useEffect(() => {
+        const path = window.location.pathname;
+        if (path === '/admin') {
+            setView('adminLogin');
+        } else {
+            setView('main');
+        }
+    }, []);
 
     // Session Persistence Effect
     useEffect(() => {
@@ -1666,9 +1550,7 @@ const App = () => {
             const savedSession = localStorage.getItem('workhub-session');
             if (savedSession) {
                 const user: CurrentUser = JSON.parse(savedSession);
-                 // Check if the user from storage is valid against the initial user list
-                const userExistsInDb = initialUsers.some(dbUser => dbUser.id === user?.id);
-                if (user && userExistsInDb) {
+                if (user && users.some(dbUser => dbUser.id === user?.id)) {
                     setCurrentUser(user);
                 } else {
                      localStorage.removeItem('workhub-session');
@@ -1678,56 +1560,35 @@ const App = () => {
             console.error("Failed to parse user session from localStorage", error);
             localStorage.removeItem('workhub-session');
         }
-    }, []);
+    }, [users]); // Depend on users being loaded from server
 
     // Admin Dashboard Security Guard Effect
     useEffect(() => {
-        // This effect acts as a robust route guard, fulfilling the requirement to secure
-        // the admin dashboard based on user role instead of unreliable IP whitelisting.
-        // It runs whenever the view or current user changes, ensuring persistent protection.
         if (view === 'adminDashboard' && (!currentUser || currentUser.role !== 'admin')) {
             showToast("Quyền truy cập bị từ chối. Vui lòng đăng nhập với tư cách quản trị viên.");
-            // We use handleNavigate here which will update the view state and trigger a re-render
-            // leading to the correct component being displayed.
             handleNavigate('adminLogin');
         }
     }, [view, currentUser, handleNavigate, showToast]);
 
     useEffect(() => {
-        // The AI logic is now handled by the serverless proxy.
-        // The frontend assumes the backend is ready and handles errors during the fetch.
         setIsAiReady(true);
         setChatMessages([{ sender: 'bot', text: 'Chào bạn! Tôi là trợ lý AI của WorkHub. Tôi có thể giúp gì cho bạn hôm nay?' }]);
     }, []);
 
-    // FIX FOR VERCEL DEPLOYMENT & DARK MODE: Prevents "document is not defined" error during build
-    // and fixes input field visibility on mobile dark mode.
     useEffect(() => {
         const style = document.createElement('style');
         style.innerHTML = `
-          .prose {
-            max-width: 100% !important;
-          }
-          /* Dark Mode Input Field Fix for Mobile OS Override */
+          .prose { max-width: 100% !important; }
           @media (prefers-color-scheme: dark) {
-            input[type="text"],
-            input[type="email"],
-            input[type="tel"],
-            input[type="password"],
-            textarea,
-            select {
-              background-color: #1a1a1a !important;
-              color: #ffffff !important;
-              -webkit-appearance: none !important;
-              -webkit-text-fill-color: #ffffff !important;
+            input, textarea, select {
+              background-color: #1a1a1a !important; color: #ffffff !important;
+              -webkit-appearance: none !important; -webkit-text-fill-color: #ffffff !important;
               border: 1px solid #444444 !important;
             }
           }
         `;
         document.head.appendChild(style);
-        return () => {
-          document.head.removeChild(style);
-        };
+        return () => { document.head.removeChild(style); };
     }, []);
 
     useEffect(() => {
@@ -1807,17 +1668,16 @@ const App = () => {
             return false;
         }
 
-        // Role-based access control
         if (context === 'admin' && user.role !== 'admin') {
             showToast("Tài khoản này không có quyền quản trị.");
             return false;
         }
         if (context === 'user' && user.role === 'admin') {
             showToast("Tài khoản quản trị viên phải đăng nhập tại trang admin.");
+            handleNavigate('adminLogin');
             return false;
         }
 
-        // Simplified password check for demo
         if (user.passwordHash === 'hashed_password_123' || user.passwordHash === 'admin_pass') {
             if (user.isLocked) {
                 showToast("Tài khoản của bạn đã bị khóa.");
@@ -1843,7 +1703,7 @@ const App = () => {
         showToast("Bạn đã đăng xuất.");
     }, [showToast, handleNavigate]);
 
-    const handleSignup = useCallback((data: any): boolean => {
+    const handleSignup = useCallback(async (data: any): Promise<boolean> => {
         if (users.some(u => u.email.toLowerCase() === data.email.toLowerCase())) {
             showToast("Email này đã được đăng ký.");
             return false;
@@ -1857,26 +1717,29 @@ const App = () => {
             role: data.role,
             isLocked: false,
         };
-        setUsers(prev => [...prev, newUser]);
-        showToast("Đăng ký thành công! Vui lòng đăng nhập.");
-        handleNavigate('login');
-        return true;
-    }, [showToast, users, handleNavigate]);
+        
+        const success = await updateServerData({ users: [...users, newUser] });
+        if(success) {
+             showToast("Đăng ký thành công! Vui lòng đăng nhập.");
+             handleNavigate('login');
+        }
+        return success;
+    }, [showToast, users, handleNavigate, updateServerData]);
     
     const handlePostJob = async (formData: any, isFeatured: boolean) => {
         if (!currentUser) return;
 
-        // --- Geocoding Step with hardened validation ---
-        const workGps = await normalizeAndGeocodeAddress(formData.location);
-        const interviewGps = await normalizeAndGeocodeAddress(formData.interviewAddress);
+        const workLocationData = await geocodePlusCodeOrAddress(formData.location);
+        const interviewLocationData = await geocodePlusCodeOrAddress(formData.interviewAddress);
 
-        // Strict Geocoding Check: Reject post if geocoding fails for either address
-        if (!workGps || !interviewGps) {
-            showToast("Lỗi: Không thể xác định một hoặc cả hai địa chỉ. Vui lòng nhập địa chỉ thật chính xác (số nhà, đường, phường, quận).");
+        if (!workLocationData || !interviewLocationData) {
+            showToast("Lỗi: Không thể xác định một hoặc cả hai địa chỉ. Vui lòng nhập địa chỉ chính xác hoặc dùng Plus Code.");
             return;
         }
     
         const newJob: Job = {
+            id: Date.now(),
+            companyId: currentUser.id,
             title: formData.title,
             company: formData.company,
             logo: formData.logo,
@@ -1887,19 +1750,19 @@ const App = () => {
             industry: formData.industry,
             employmentType: formData.employmentType,
             interviewAddress: formData.interviewAddress,
-            workLocationGps: workGps,
+            workLocationGps: workLocationData.coords,
+            workPlusCode: workLocationData.plusCode,
             recruiter: {
                 name: `Phòng nhân sự ${formData.company}`,
                 email: formData.recruiterEmail,
                 hotline: formData.recruiterHotline,
                 officeLocation: formData.interviewAddress,
-                officeGps: interviewGps
+                officeGps: interviewLocationData.coords,
+                officePlusCode: interviewLocationData.plusCode
             },
             isVerified: false,
             benefits: typeof formData.benefits === 'string' ? formData.benefits.split(',').map((s:string) => s.trim()) : [],
             requirements: typeof formData.requirements === 'string' ? formData.requirements.split('\n').map((s:string) => s.trim()) : [],
-            id: Date.now(),
-            companyId: currentUser.id,
             rating: 0,
             reviewCount: 0,
             reviews: [],
@@ -1910,14 +1773,16 @@ const App = () => {
         if (isFeatured) {
             setJobDataForPayment({ ...newJob, isFeatured: true });
         } else {
-            setJobs(prev => [newJob, ...prev]);
-            setNewJobNotifications(prev => [newJob, ...prev].slice(0, 5));
-            setIsPostingModalOpen(false);
-            showToast("Đăng tin thành công!");
+            const success = await updateServerData({ jobs: [newJob, ...jobs] });
+            if (success) {
+                setNewJobNotifications(prev => [newJob, ...prev].slice(0, 5));
+                setIsPostingModalOpen(false);
+                showToast("Đăng tin thành công!");
+            }
         }
     };
     
-    const handlePaymentSuccess = () => {
+    const handlePaymentSuccess = async () => {
         if (!jobDataForPayment || !currentUser) return;
         const newPayment: Payment = {
             id: `TXN${Date.now()}`,
@@ -1927,23 +1792,32 @@ const App = () => {
             amount: 99000,
             status: 'Completed',
         };
-        setJobs(prev => [jobDataForPayment, ...prev]);
-        setPayments(prev => [...prev, newPayment]);
-        setNewJobNotifications(prev => [jobDataForPayment, ...prev].slice(0, 5));
-        setJobDataForPayment(null);
-        setIsPostingModalOpen(false);
-        showToast("Thanh toán và đăng tin nổi bật thành công!");
+        const success = await updateServerData({ 
+            jobs: [jobDataForPayment, ...jobs],
+            payments: [...payments, newPayment]
+        });
+        
+        if (success) {
+            setNewJobNotifications(prev => [jobDataForPayment, ...prev].slice(0, 5));
+            setJobDataForPayment(null);
+            setIsPostingModalOpen(false);
+            showToast("Thanh toán và đăng tin nổi bật thành công!");
+        }
     };
 
-    const handleAddNewReview = useCallback((jobId: number, review: Omit<Review, 'status'>) => {
+    const handleAddNewReview = useCallback(async (jobId: number, review: Omit<Review, 'status'>) => {
         const newReview = { ...review, status: 'pending' as const };
-        setJobs(prevJobs => prevJobs.map(job => 
+        const updatedJobs = jobs.map(job => 
             job.id === jobId 
                 ? { ...job, reviews: [newReview, ...job.reviews] }
                 : job
-        ));
-        showToast("Cảm ơn bạn đã gửi đánh giá! Đánh giá của bạn đang chờ duyệt.");
-    }, [showToast]);
+        );
+        
+        const success = await updateServerData({ jobs: updatedJobs });
+        if(success) {
+            showToast("Cảm ơn bạn đã gửi đánh giá! Đánh giá của bạn đang chờ duyệt.");
+        }
+    }, [jobs, showToast, updateServerData]);
 
     const handleSendMessage = async () => {
         if (!userInput.trim() || botStatus === 'thinking') return;
@@ -1954,11 +1828,8 @@ const App = () => {
         setUserInput('');
         
         setBotStatus('thinking');
-        const MIN_THINKING_TIME = 15000; // 15 seconds
-        const startTime = Date.now();
-
+        
         try {
-            // Step 1: Intent Analysis via Proxy
             const intentRes = await fetch('/api/chatbot-proxy', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1967,24 +1838,29 @@ const App = () => {
     
             if (!intentRes.ok) {
                 const errorData = await intentRes.json();
-                throw new Error(`Intent analysis failed: ${intentRes.statusText} - ${errorData.details || ''}`);
+                throw new Error(errorData.error || `Intent analysis failed`);
             }
             
             const intentResult = await intentRes.json();
-            const intentData = JSON.parse(intentResult.data); // Gemini returns a JSON string
+            let intentData: { intent: string; keywords?: string; };
+
+            try {
+                const parsedData = JSON.parse(intentResult.data);
+                intentData = {
+                    intent: String(parsedData.intent),
+                    keywords: parsedData.keywords ? String(parsedData.keywords) : undefined,
+                };
+            } catch (e) {
+                intentData = { intent: 'GENERAL_CONVERSATION' };
+            }
     
             if (intentData.intent === 'JOB_SEARCH' && intentData.keywords) {
-                // Step 2: Perform search locally
                 const foundJobs = searchJobs(intentData.keywords);
-                if (foundJobs.length > 0) {
-                    const botMessage: ChatMessage = { sender: 'bot', text: `Tôi đã tìm thấy ${foundJobs.length} công việc phù hợp với tìm kiếm của bạn:`, jobs: foundJobs };
-                    setChatMessages(prev => [...prev, botMessage]);
-                } else {
-                    const botMessage: ChatMessage = { sender: 'bot', text: `Rất tiếc, tôi không tìm thấy công việc nào cho "${intentData.keywords}". Bạn có thể thử với từ khóa khác không?` };
-                    setChatMessages(prev => [...prev, botMessage]);
-                }
+                const botMessage: ChatMessage = foundJobs.length > 0 ?
+                    { sender: 'bot', text: `Tôi đã tìm thấy ${foundJobs.length} công việc phù hợp:`, jobs: foundJobs } :
+                    { sender: 'bot', text: `Rất tiếc, tôi không tìm thấy công việc nào cho "${intentData.keywords}".` };
+                setChatMessages(prev => [...prev, botMessage]);
             } else {
-                // Step 3: General conversation via Proxy
                 const chatRes = await fetch('/api/chatbot-proxy', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1993,28 +1869,20 @@ const App = () => {
     
                 if (!chatRes.ok) {
                     const errorData = await chatRes.json();
-                    throw new Error(`Chat request failed: ${chatRes.statusText} - ${errorData.details || ''}`);
+                    throw new Error(errorData.error || `Chat request failed`);
                 }
     
                 const chatResult = await chatRes.json();
-                const botMessage: ChatMessage = { sender: 'bot', text: chatResult.data };
-                setChatMessages(prev => [...prev, botMessage]);
+                setChatMessages(prev => [...prev, { sender: 'bot', text: chatResult.data }]);
             }
-        } catch (error) {
-            console.error("Proxy API error:", error);
-            const errorMessage: ChatMessage = { sender: 'bot', text: 'Xin lỗi, đã có lỗi xảy ra khi kết nối với trợ lý AI. Vui lòng thử lại.' };
-            setChatMessages(prev => [...prev, errorMessage]);
+        } catch (error: any) {
+            let errorMessage = 'Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại.';
+            if (error.message.includes("API key not configured")) {
+                errorMessage = 'Lỗi cấu hình: API Key của Trợ lý AI chưa được thiết lập trên máy chủ.';
+            }
+            setChatMessages(prev => [...prev, { sender: 'bot', text: errorMessage }]);
         } finally {
-            const elapsedTime = Date.now() - startTime;
-            const remainingTime = MIN_THINKING_TIME - elapsedTime;
-
-            if (remainingTime > 0) {
-                setTimeout(() => {
-                    setBotStatus('idle');
-                }, remainingTime);
-            } else {
-                setBotStatus('idle');
-            }
+            setBotStatus('idle');
         }
     };
     
@@ -2029,7 +1897,7 @@ const App = () => {
     };
     
     // --- CHAT & ADMIN HANDLERS ---
-    const handleStartPrivateChat = (job: Job) => {
+    const handleStartPrivateChat = async (job: Job) => {
         if (!currentUser) {
             showToast("Vui lòng đăng nhập để chat với nhà tuyển dụng.");
             handleNavigate('login');
@@ -2051,16 +1919,16 @@ const App = () => {
                 participants: { applicantId: currentUser.id, employerId: job.companyId },
                 messages: [{ senderId: 0, text: `Cuộc hội thoại về tin đăng "${job.title}" đã bắt đầu.`, timestamp: Date.now() }]
             };
-            setPrivateChats(prev => [...prev, newChat]);
+            await updateServerData({ privateChats: [...privateChats, newChat] });
         }
         
         setActivePrivateChat(sessionId);
-        setSelectedJob(null); // Close job detail modal
+        setSelectedJob(null);
     };
     
-    const handleSendPrivateMessage = (sessionId: string, text: string) => {
+    const handleSendPrivateMessage = async (sessionId: string, text: string) => {
         if (!currentUser) return;
-        setPrivateChats(prev => prev.map(chat => {
+        const updatedChats = privateChats.map(chat => {
             if (chat.sessionId === sessionId) {
                 const newMessage: PrivateChatMessage = {
                     senderId: currentUser.id,
@@ -2070,53 +1938,73 @@ const App = () => {
                 return { ...chat, messages: [...chat.messages, newMessage] };
             }
             return chat;
-        }));
+        });
+        setPrivateChats(updatedChats); // Optimistic update
+        await updateServerData({ privateChats: updatedChats });
     };
     
-    const toggleUserLock = useCallback((userId: number) => {
-        setUsers(prevUsers => prevUsers.map(user => {
-            if (user.id === userId) {
-                const updatedUser = { ...user, isLocked: !user.isLocked };
-                 logAdminAction(`${updatedUser.isLocked ? 'Khóa' : 'Mở khóa'} người dùng ${updatedUser.email} (ID: ${userId})`);
-                 showToast(`Đã ${updatedUser.isLocked ? 'khóa' : 'mở khóa'} tài khoản.`);
-                return updatedUser;
-            }
+    const toggleUserLock = useCallback(async (userId: number) => {
+        const updatedUsers = users.map(user => {
+            if (user.id === userId) return { ...user, isLocked: !user.isLocked };
             return user;
-        }));
-    }, [logAdminAction, showToast]);
-
-    const deleteJob = useCallback((jobId: number) => {
-        if (window.confirm("Bạn có chắc chắn muốn xóa vĩnh viễn tin đăng này không?")) {
-            setJobs(prev => prev.filter(job => job.id !== jobId));
-            logAdminAction(`Xóa tin đăng ID: ${jobId}`);
-            showToast("Đã xóa tin đăng.");
+        });
+        
+        const success = await updateServerData({ users: updatedUsers });
+        if (success) {
+            const user = updatedUsers.find(u => u.id === userId);
+            if(user) {
+                await logAdminAction(`${user.isLocked ? 'Khóa' : 'Mở khóa'} người dùng ${user.email} (ID: ${userId})`);
+                showToast(`Đã ${user.isLocked ? 'khóa' : 'mở khóa'} tài khoản.`);
+            }
         }
-    }, [logAdminAction, showToast]);
+    }, [users, logAdminAction, showToast, updateServerData]);
+
+    const deleteJob = useCallback(async (jobId: number) => {
+        if (window.confirm("Bạn có chắc chắn muốn xóa vĩnh viễn tin đăng này không?")) {
+            const updatedJobs = jobs.filter(job => job.id !== jobId);
+            const success = await updateServerData({ jobs: updatedJobs });
+            if (success) {
+                await logAdminAction(`Xóa tin đăng ID: ${jobId}`);
+                showToast("Đã xóa tin đăng.");
+            }
+        }
+    }, [jobs, logAdminAction, showToast, updateServerData]);
     
-    const handleUpdateJob = (updatedJob: Job) => {
-        setJobs(prevJobs => prevJobs.map(job => job.id === updatedJob.id ? updatedJob : job));
-        logAdminAction(`Cập nhật tin đăng "${updatedJob.title}" (ID: ${updatedJob.id})`);
+    const handleUpdateJob = async (updatedJob: Job) => {
+        const updatedJobs = jobs.map(job => job.id === updatedJob.id ? updatedJob : job);
+        const success = await updateServerData({ jobs: updatedJobs });
+        if (success) {
+             await logAdminAction(`Cập nhật tin đăng "${updatedJob.title}" (ID: ${updatedJob.id})`);
+        }
     };
 
-    const handleReportAction = (reportId: number) => {
-        setReports(prev => prev.filter(r => r.id !== reportId));
-        logAdminAction(`Xử lý báo cáo ID: ${reportId}`);
-        showToast("Đã xử lý báo cáo.");
+    const handleReportAction = async (reportId: number) => {
+        const updatedReports = reports.filter(r => r.id !== reportId);
+        const success = await updateServerData({ reports: updatedReports });
+        if(success) {
+            await logAdminAction(`Xử lý báo cáo ID: ${reportId}`);
+            showToast("Đã xử lý báo cáo.");
+        }
     };
 
-    const handleReviewStatusChange = (jobId: number, reviewIndex: number, newStatus: Review['status']) => {
-        setJobs(prevJobs => prevJobs.map(job => {
+    const handleReviewStatusChange = async (jobId: number, reviewIndex: number, newStatus: Review['status']) => {
+        const updatedJobs = jobs.map(job => {
             if (job.id === jobId) {
                 const newReviews = [...job.reviews];
-                newReviews[reviewIndex].status = newStatus;
+                if (newReviews[reviewIndex]) {
+                    newReviews[reviewIndex].status = newStatus;
+                }
                 return { ...job, reviews: newReviews };
             }
             return job;
-        }));
-        logAdminAction(`Thay đổi trạng thái đánh giá (Job ID: ${jobId}, Review Index: ${reviewIndex}) thành ${newStatus}`);
+        });
+        const success = await updateServerData({ jobs: updatedJobs });
+        if(success) {
+            await logAdminAction(`Thay đổi trạng thái đánh giá (Job ID: ${jobId}, Review Index: ${reviewIndex}) thành ${newStatus}`);
+        }
     };
     
-    const handleSubmitReport = (reason: string, details: string) => {
+    const handleSubmitReport = async (reason: string, details: string) => {
         if (!jobToReport) return;
         const newReport: Report = {
             id: Date.now(),
@@ -2126,51 +2014,47 @@ const App = () => {
             details,
             status: 'pending'
         };
-        setReports(prev => [newReport, ...prev]);
-        showToast("Cảm ơn bạn đã báo cáo. Chúng tôi sẽ xem xét sớm nhất có thể.");
-        setJobToReport(null);
+        const success = await updateServerData({ reports: [newReport, ...reports] });
+        if (success) {
+            showToast("Cảm ơn bạn đã báo cáo. Chúng tôi sẽ xem xét sớm nhất có thể.");
+            setJobToReport(null);
+        }
     };
 
-     const handleCvSubmit = useCallback((job: Job, file: File) => {
+     const handleCvSubmit = useCallback(async (job: Job, file: File) => {
         if (!currentUser || currentUser.role !== 'jobseeker') {
             showToast("Vui lòng đăng nhập với tư cách người tìm việc để nộp CV.");
             return;
         }
 
-        // Simulate file upload to Supabase Storage
-        setTimeout(() => {
-            const simulatedUrl = `https://supabase.io/storage/v1/workhub-cvs/${currentUser.id}-${job.id}-${file.name}`;
-            const newApplication: Application = {
-                id: Date.now(),
-                jobId: job.id,
-                applicantId: currentUser.id,
-                cvFileUrl: simulatedUrl,
-                submittedAt: new Date().toISOString(),
-            };
-            setApplications(prev => [...prev, newApplication]);
+        // Simulate file upload and get URL
+        const simulatedUrl = `https://your-storage.com/cvs/${currentUser.id}-${job.id}-${file.name}`;
+        const newApplication: Application = {
+            id: Date.now(),
+            jobId: job.id,
+            applicantId: currentUser.id,
+            cvFileUrl: simulatedUrl,
+            submittedAt: new Date().toISOString(),
+        };
 
-            // Simulate email notification
+        const success = await updateServerData({ applications: [...applications, newApplication] });
+
+        if (success) {
             console.log(`--- EMAIL NOTIFICATION SIMULATION ---
-            To: ${job.recruiter.email}
-            Subject: Ứng tuyển mới cho vị trí: ${job.title}
-            Body:
-            Chào ${job.recruiter.name},
-
-            Bạn đã nhận được một hồ sơ ứng tuyển mới từ ${currentUser.name} cho vị trí "${job.title}".
-            Bạn có thể xem CV tại đường dẫn bảo mật sau:
-            ${simulatedUrl}
-
-            Trân trọng,
-            Hệ thống WorkHub
+            To: ${job.recruiter.email}, Subject: Ứng tuyển mới cho vị trí: ${job.title}
+            Body: Bạn đã nhận được một hồ sơ ứng tuyển mới từ ${currentUser.name} cho vị trí "${job.title}".
             -------------------------------------`);
-
             showToast("Nộp CV thành công! Nhà tuyển dụng đã được thông báo.");
-            setSelectedJob(null); // Close modal on success
-        }, 2000);
-    }, [currentUser, showToast]);
+            setSelectedJob(null);
+        }
+    }, [currentUser, showToast, applications, updateServerData]);
 
 
     // --- RENDER LOGIC ---
+    if (!isDataLoaded) {
+        return <div className="flex justify-center items-center h-screen">Đang tải dữ liệu...</div>;
+    }
+
     const renderView = () => {
         switch (view) {
             case 'login':
@@ -2182,7 +2066,6 @@ const App = () => {
             case 'employerDashboard':
                 return <EmployerDashboard currentUser={currentUser} jobs={jobs} payments={payments} privateChats={privateChats} users={users} handleEditJob={setJobToEdit} handleDeleteJob={deleteJob} openPrivateChat={setActivePrivateChat}/>;
             case 'adminDashboard':
-                // The guard effect will handle redirection if the user is not an admin.
                 if (currentUser?.role === 'admin') {
                      return <AdminDashboard currentUser={currentUser} handleNavigate={handleNavigate} users={users} jobs={jobs} reports={reports} actionLogs={actionLogs} toggleUserLock={toggleUserLock} deleteJob={deleteJob} showToast={showToast} handleOpenEditModal={setJobToEdit} handleReportAction={handleReportAction} handleReviewStatusChange={handleReviewStatusChange} />;
                 }

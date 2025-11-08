@@ -2,7 +2,10 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 // Initialize AI Client outside the handler to be reused across invocations.
 // This helps optimize "cold starts" for the serverless function.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let ai: GoogleGenAI | null = null;
+if (process.env.API_KEY) {
+    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+}
 
 // This function will be deployed as a Vercel Serverless Function.
 // It acts as a secure proxy between the frontend and the Google AI API.
@@ -16,25 +19,25 @@ export default async function handler(req: any, res: any) {
         return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
+    // --- Step 1: Check for API Key configuration ---
+    if (!ai) {
+        console.error('[Chatbot Proxy] CRITICAL: Google AI API key is not configured on the server.');
+        return res.status(503).json({ error: 'Service Unavailable: The AI service is not configured on the server.' });
+    }
+
     try {
         const { type, message } = req.body;
 
-        // --- Step 1: Debug Logging ---
+        // --- Step 2: Debug Logging ---
         console.log(`[Chatbot Proxy] Received request: type='${type}'`);
-        const apiKeyExists = !!process.env.API_KEY;
-        console.log(`[Chatbot Proxy] Checking for API Key... ${apiKeyExists ? 'Found' : 'MISSING!'}`);
-
-        if (!apiKeyExists) {
-            throw new Error("Google AI API key is not configured on the server.");
-        }
+        
         if (!type || !message) {
              return res.status(400).json({ error: 'Invalid request body, "type" and "message" are required.' });
         }
 
-        // --- Step 2: AI Client is already initialized outside the handler ---
+        // --- Step 3: AI Client is already initialized, handle request types ---
         let geminiResponseText: string;
 
-        // --- Step 3: Handle different request types (Intent Analysis vs. General Chat) ---
         if (type === 'intent') {
             const intentPrompt = `System: You are an intent classification AI for a job board chatbot. Analyze the user's message and determine if they are searching for a job or just having a general conversation. If they are searching for a job, identify the keywords (job title, location, skills). Respond ONLY with a JSON object in the format: For job search: { "intent": "JOB_SEARCH", "keywords": "extracted keywords" } For anything else: { "intent": "GENERAL_CONVERSATION" }\n\nUser message: "${message}"`;
             
