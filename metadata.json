@@ -1,7 +1,5 @@
 {
   "name": "ho-tro-viet-lam",
   "description": "Một ứng dụng bảng tin việc làm được xây dựng bằng React và Tailwind CSS, cho phép người dùng tìm kiếm công việc và nhà tuyển dụng đăng tin tuyển dụng một cách an toàn và hiệu quả.",
-  "requestFramePermissions": [
-    "geolocation"
-  ]
+  "requestFramePermissions": []
 }

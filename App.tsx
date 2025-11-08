@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- TYPES ---
@@ -1083,7 +1084,14 @@ const MainContent = ({ filters, handleFilterChange, uniqueIndustries, showOnlySa
     </main>
 );
 
-const AuthPage = ({ children, title, onBack }: { children: React.ReactNode, title: string, onBack?: () => void }) => (
+// Fix: Extracted props to a named type to resolve a TypeScript inference issue
+// where 'children' was not being correctly identified when passed via JSX.
+type AuthPageProps = {
+    children: React.ReactNode;
+    title: string;
+    onBack?: () => void;
+};
+const AuthPage = ({ children, title, onBack }: AuthPageProps) => (
     <main className="container mx-auto p-6 flex justify-center">
         <div className="w-full max-w-md bg-white rounded-lg shadow-md mt-10 overflow-hidden">
             <div className="p-6 border-b border-gray-200">
