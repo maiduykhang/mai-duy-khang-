@@ -1,5 +1,11 @@
 {
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  ],
+  "functions": {
+    "api/chatbot-proxy.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  }
 }

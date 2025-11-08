@@ -106,6 +106,7 @@ type Application = {
 
 type CurrentUser = Omit<User, 'passwordHash'> | null;
 type AppView = 'main' | 'login' | 'signup' | 'employerDashboard' | 'adminDashboard' | 'adminLogin';
+type BotStatus = 'idle' | 'thinking';
 
 // --- CONFIGURATION ---
 // In a real production environment, these values should be loaded from environment variables (.env)
@@ -321,6 +322,42 @@ const geocodeAddress = (address: string): Promise<[number, number] | null> => {
     });
 };
 
+const normalizeAndGeocodeAddress = (input: string): Promise<[number, number] | null> => {
+    let addressToGeocode = input.trim();
+    try {
+        // Attempt to parse the input as a URL
+        const url = new URL(input);
+        // Handle various Google Maps URL formats
+        if (url.hostname.includes('google.com') || url.hostname.includes('googleusercontent.com')) {
+            const query = url.searchParams.get('q') || url.searchParams.get('query');
+            if (query) {
+                addressToGeocode = query;
+            } else {
+                const pathParts = url.pathname.split('/');
+                const placeIndex = pathParts.indexOf('place');
+                const dataIndex = pathParts.indexOf('data');
+                
+                if (placeIndex !== -1 && pathParts.length > placeIndex + 1) {
+                     // Format: /maps/place/159+Nguyen+Du,+P.+Ben+Thanh,...
+                    addressToGeocode = decodeURIComponent(pathParts[placeIndex + 1].replace(/\+/g, ' '));
+                } else if (dataIndex !== -1 && url.pathname.includes('!3d') && url.pathname.includes('!4d')) {
+                    // Attempt to extract coordinates directly from the data blob in the URL
+                    // e.g. /maps/place/.../data=!4m2!3m1!1s0x...d10.7731!4d106.6957
+                    const latMatch = url.pathname.match(/!3d(-?\d+\.\d+)/);
+                    const lngMatch = url.pathname.match(/!4d(-?\d+\.\d+)/);
+                    if (latMatch && lngMatch && latMatch[1] && lngMatch[1]) {
+                         return Promise.resolve([parseFloat(latMatch[1]), parseFloat(lngMatch[1])]);
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        // Not a valid URL, treat as plain text address. No action needed.
+    }
+    // Fallback to geocoding the extracted/original string
+    return geocodeAddress(addressToGeocode);
+};
+
 
 // --- HELPER & ICON COMPONENTS ---
 const StarIcon = ({ filled, half = false, className = "w-4 h-4", ...props }: { filled: boolean; half?: boolean; className?: string; [key: string]: any; }) => {
@@ -382,13 +419,13 @@ type ChatWidgetProps = {
     userInput: string;
     setUserInput: React.Dispatch<React.SetStateAction<string>>;
     handleSendMessage: () => void;
-    isBotTyping: boolean;
+    botStatus: BotStatus;
     isAiReady: boolean;
     selectedJob: Job | null;
     handleOpenJobFromChat: (job: Job) => void;
 };
 
-const ChatWidget = ({ isChatOpen, setIsChatOpen, chatMessages, userInput, setUserInput, handleSendMessage, isBotTyping, isAiReady, selectedJob, handleOpenJobFromChat }: ChatWidgetProps) => {
+const ChatWidget = ({ isChatOpen, setIsChatOpen, chatMessages, userInput, setUserInput, handleSendMessage, botStatus, isAiReady, selectedJob, handleOpenJobFromChat }: ChatWidgetProps) => {
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -396,7 +433,7 @@ const ChatWidget = ({ isChatOpen, setIsChatOpen, chatMessages, userInput, setUse
         if (chatContainerRef.current) {
             chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
         }
-    }, [chatMessages, isBotTyping]);
+    }, [chatMessages, botStatus]);
     
     useEffect(() => {
         if (isChatOpen && textareaRef.current) {
@@ -451,7 +488,7 @@ const ChatWidget = ({ isChatOpen, setIsChatOpen, chatMessages, userInput, setUse
                                 )}
                             </div>
                         ))}
-                        {isBotTyping && <div className="flex justify-start"><p className="p-2 rounded-lg text-sm bg-white text-gray-800 shadow-sm">...</p></div>}
+                        {botStatus === 'thinking' && <div className="flex justify-start"><p className="p-2 rounded-lg text-sm bg-white text-gray-800 shadow-sm animate-pulse">Đang suy nghĩ...</p></div>}
                     </div>
                     <div className="p-2 border-t flex items-start">
                         <textarea 
@@ -461,13 +498,13 @@ const ChatWidget = ({ isChatOpen, setIsChatOpen, chatMessages, userInput, setUse
                             onKeyDown={handleKeyDown}
                             placeholder={!isAiReady ? "Trợ lý AI không sẵn sàng" : "Nhập câu hỏi..."}
                             className="flex-1 border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 resize-none overflow-hidden"
-                            disabled={!isAiReady || isBotTyping}
+                            disabled={!isAiReady || botStatus === 'thinking'}
                             rows={1}
                         />
                         <button 
                             onClick={handleSendMessage} 
                             className="ml-2 bg-blue-500 text-white px-3 py-1 rounded-md text-sm hover:bg-blue-600 disabled:bg-blue-300 self-end"
-                            disabled={!isAiReady || isBotTyping}
+                            disabled={!isAiReady || botStatus === 'thinking'}
                         >Gửi</button>
                     </div>
                  </div>
@@ -881,12 +918,12 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
                         </div>
                         <div className="md:col-span-2">
                             <label htmlFor="location" className="block text-sm font-medium text-gray-800 mb-1">Địa chỉ Nơi làm việc <span className="text-red-500">*</span></label>
-                            <input type="text" name="location" id="location" value={formData.location} onChange={handleChange} className="w-full border-gray-300 rounded-md" required placeholder="Nhập địa chỉ thật cụ thể (số nhà, đường, phường, quận)" />
+                            <input type="text" name="location" id="location" value={formData.location} onChange={handleChange} className="w-full border-gray-300 rounded-md" required placeholder="Nhập địa chỉ, URL Google Maps..." />
                             {formErrors.location && <p className="text-red-500 text-xs mt-1">{formErrors.location}</p>}
                         </div>
                         <div className="md:col-span-2">
                             <label htmlFor="interviewAddress" className="block text-sm font-medium text-gray-800 mb-1">Địa chỉ Phỏng vấn <span className="text-red-500">*</span></label>
-                            <input type="text" name="interviewAddress" id="interviewAddress" value={formData.interviewAddress} onChange={handleChange} className="w-full border-gray-300 rounded-md" required placeholder="Nhập địa chỉ thật cụ thể (số nhà, đường, phường, quận)"/>
+                            <input type="text" name="interviewAddress" id="interviewAddress" value={formData.interviewAddress} onChange={handleChange} className="w-full border-gray-300 rounded-md" required placeholder="Nhập địa chỉ, URL Google Maps..."/>
                             {formErrors.interviewAddress && <p className="text-red-500 text-xs mt-1">{formErrors.interviewAddress}</p>}
                         </div>
                      </div>
@@ -1594,7 +1631,7 @@ const App = () => {
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
     const [userInput, setUserInput] = useState('');
-    const [isBotTyping, setIsBotTyping] = useState(false);
+    const [botStatus, setBotStatus] = useState<BotStatus>('idle');
     const [isAiReady, setIsAiReady] = useState(false);
 
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -1845,12 +1882,12 @@ const App = () => {
     const handlePostJob = async (formData: any, isFeatured: boolean) => {
         if (!currentUser) return;
 
-        // --- Geocoding Step ---
-        const workGps = await geocodeAddress(formData.location);
-        const interviewGps = await geocodeAddress(formData.interviewAddress);
+        // --- Geocoding Step with URL normalization ---
+        const workGps = await normalizeAndGeocodeAddress(formData.location);
+        const interviewGps = await normalizeAndGeocodeAddress(formData.interviewAddress);
 
         if (!workGps || !interviewGps) {
-            showToast("Lỗi: Không thể xác định địa chỉ. Vui lòng nhập địa chỉ cụ thể hơn (số nhà, đường, phường, quận).");
+            showToast("Lỗi: Không thể xác định địa chỉ. Vui lòng nhập địa chỉ cụ thể (số nhà, đường, phường, quận) hoặc một URL Google Maps hợp lệ.");
             return;
         }
     
@@ -1924,13 +1961,17 @@ const App = () => {
     }, [showToast]);
 
     const handleSendMessage = async () => {
-        if (!userInput.trim()) return;
+        if (!userInput.trim() || botStatus === 'thinking') return;
+        
         const newUserMessage: ChatMessage = { sender: 'user', text: userInput };
         setChatMessages(prev => [...prev, newUserMessage]);
         const currentInput = userInput;
         setUserInput('');
-        setIsBotTyping(true);
-    
+        
+        setBotStatus('thinking');
+        const MIN_THINKING_TIME = 15000; // 15 seconds
+        const startTime = Date.now();
+
         try {
             // Step 1: Intent Analysis via Proxy
             const intentRes = await fetch('/api/chatbot-proxy', {
@@ -1979,7 +2020,16 @@ const App = () => {
             const errorMessage: ChatMessage = { sender: 'bot', text: 'Xin lỗi, đã có lỗi xảy ra khi kết nối với trợ lý AI. Vui lòng thử lại.' };
             setChatMessages(prev => [...prev, errorMessage]);
         } finally {
-            setIsBotTyping(false);
+            const elapsedTime = Date.now() - startTime;
+            const remainingTime = MIN_THINKING_TIME - elapsedTime;
+
+            if (remainingTime > 0) {
+                setTimeout(() => {
+                    setBotStatus('idle');
+                }, remainingTime);
+            } else {
+                setBotStatus('idle');
+            }
         }
     };
     
@@ -2209,7 +2259,7 @@ const App = () => {
                 userInput={userInput}
                 setUserInput={setUserInput}
                 handleSendMessage={handleSendMessage}
-                isBotTyping={isBotTyping}
+                botStatus={botStatus}
                 isAiReady={isAiReady}
                 selectedJob={selectedJob}
                 handleOpenJobFromChat={handleOpenJobFromChat}

@@ -7,6 +7,9 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 // This function will be deployed as a Vercel Serverless Function.
 // It acts as a secure proxy between the frontend and the Google AI API.
 export default async function handler(req: any, res: any) {
+    // Reinforce connection stability with Keep-Alive header
+    res.setHeader('Connection', 'keep-alive');
+    
     // Only allow POST requests
     if (req.method !== 'POST') {
         res.setHeader('Allow', ['POST']);
