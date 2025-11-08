@@ -121,8 +121,8 @@ const CONFIG = {
 };
 
 
-// --- REALISTIC & ACCURATE MOCK DATA ---
-const initialUsers: User[] = [
+// --- REALISTIC & ACCURATE MOCK DATA (ACTS AS OUR DATABASE) ---
+const mockUsersDatabase: User[] = [
     { id: 1, email: 'tuyendung@7-eleven.vn', passwordHash: 'hashed_password_123', name: '7-Eleven', phone: '0901234567', role: 'employer', isLocked: false },
     { id: 2, email: 'hr@thecoffeehouse.vn', passwordHash: 'hashed_password_123', name: 'The Coffee House', phone: '0987654321', role: 'employer', isLocked: false },
     { id: 3, email: 'recruitment@kfcvietnam.com.vn', passwordHash: 'hashed_password_123', name: 'KFC', phone: '0912345678', role: 'employer', isLocked: true },
@@ -131,7 +131,7 @@ const initialUsers: User[] = [
     { id: 201, email: 'applicant1@email.com', passwordHash: 'hashed_password_123', name: 'Nguyễn Văn An', phone: '0911111111', role: 'jobseeker', isLocked: false }
 ];
 
-const initialJobs: Job[] = [
+const mockJobsDatabase: Job[] = [
     {
         id: 1,
         title: "Nhân viên Bán hàng (Part-time)",
@@ -261,7 +261,7 @@ const initialJobs: Job[] = [
     }
 ];
 
-const initialPayments: Payment[] = [
+const mockPaymentsDatabase: Payment[] = [
     { id: 'TXN001', userId: 1, date: '2024-07-15', service: 'Tin Nổi Bật', amount: 99000, status: 'Completed' },
     { id: 'TXN002', userId: 2, date: '2024-07-20', service: 'Tin Nổi Bật', amount: 99000, status: 'Completed' },
     { id: 'TXN003', userId: 1, date: '2024-07-22', service: 'Tin Nổi Bật', amount: 99000, status: 'Completed' },
@@ -1536,9 +1536,9 @@ const PrivateChatModal = ({ session, currentUser, users, job, onClose, onSendMes
 // --- MAIN APP COMPONENT ---
 const App = () => {
     // --- STATE MANAGEMENT ---
-    const [jobs, setJobs] = useState<Job[]>(initialJobs);
-    const [users, setUsers] = useState<User[]>(initialUsers);
-    const [payments, setPayments] = useState<Payment[]>(initialPayments);
+    const [jobs, setJobs] = useState<Job[]>(mockJobsDatabase);
+    const [users, setUsers] = useState<User[]>(mockUsersDatabase);
+    const [payments, setPayments] = useState<Payment[]>(mockPaymentsDatabase);
     const [reports, setReports] = useState<Report[]>([]);
     const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
     const [privateChats, setPrivateChats] = useState<PrivateChatSession[]>([]);
@@ -1602,7 +1602,7 @@ const App = () => {
             if (savedSession) {
                 const user: CurrentUser = JSON.parse(savedSession);
                  // A quick check to ensure the user from storage is valid
-                const userExistsInDb = initialUsers.some(dbUser => dbUser.id === user?.id);
+                const userExistsInDb = mockUsersDatabase.some(dbUser => dbUser.id === user?.id);
                 if (user && userExistsInDb) {
                     setCurrentUser(user);
                 } else {
@@ -1684,7 +1684,7 @@ const App = () => {
     }, []);
 
     // --- DATA & FILTERS ---
-    const uniqueIndustries = useMemo(() => [...new Set(initialJobs.map(j => j.industry))], []);
+    const uniqueIndustries = useMemo(() => [...new Set(mockJobsDatabase.map(j => j.industry))], []);
 
     const filteredJobs = useMemo(() => {
         let jobsToFilter = showOnlySaved ? jobs.filter(j => savedJobIds.has(j.id)) : jobs;
@@ -1769,7 +1769,7 @@ const App = () => {
     }, [showToast]);
 
     const handleSignup = useCallback((data: any): boolean => {
-        if (users.some(u => u.email.toLowerCase() === data.email.toLowerCase())) {
+        if (mockUsersDatabase.some(u => u.email.toLowerCase() === data.email.toLowerCase())) {
             showToast("Email này đã được đăng ký.");
             return false;
         }
@@ -1782,11 +1782,12 @@ const App = () => {
             role: data.role,
             isLocked: false,
         };
-        setUsers(prev => [...prev, newUser]);
+        mockUsersDatabase.push(newUser);
+        setUsers([...mockUsersDatabase]);
         showToast("Đăng ký thành công! Vui lòng đăng nhập.");
         setView('login');
         return true;
-    }, [users, showToast]);
+    }, [showToast]);
     
     const handlePostJob = (jobData: any, isFeatured: boolean) => {
         if (!currentUser) return;
@@ -1805,7 +1806,8 @@ const App = () => {
         if (isFeatured) {
             setJobDataForPayment({ ...newJob, isFeatured: true });
         } else {
-            setJobs(prev => [newJob, ...prev]);
+            mockJobsDatabase.unshift(newJob);
+            setJobs([...mockJobsDatabase]);
             setNewJobNotifications(prev => [newJob, ...prev].slice(0, 5));
             setIsPostingModalOpen(false);
             showToast("Đăng tin thành công!");
@@ -1813,15 +1815,18 @@ const App = () => {
     };
     
     const handlePaymentSuccess = () => {
-        setJobs(prev => [jobDataForPayment, ...prev]);
-        setPayments(prev => [...prev, {
+        if (!jobDataForPayment || !currentUser) return;
+        mockJobsDatabase.unshift(jobDataForPayment);
+        mockPaymentsDatabase.push({
             id: `TXN${Date.now()}`,
-            userId: currentUser!.id,
+            userId: currentUser.id,
             date: new Date().toISOString().split('T')[0],
             service: 'Tin Nổi Bật',
             amount: 99000,
             status: 'Completed',
-        }]);
+        });
+        setJobs([...mockJobsDatabase]);
+        setPayments([...mockPaymentsDatabase]);
         setNewJobNotifications(prev => [jobDataForPayment, ...prev].slice(0, 5));
         setJobDataForPayment(null);
         setIsPostingModalOpen(false);
@@ -1829,12 +1834,11 @@ const App = () => {
     };
 
     const handleAddNewReview = useCallback((jobId: number, review: Omit<Review, 'status'>) => {
-        setJobs(prevJobs => prevJobs.map(job => {
-            if (job.id === jobId) {
-                return { ...job, reviews: [{...review, status: 'pending'}, ...job.reviews] };
-            }
-            return job;
-        }));
+        const jobIndex = mockJobsDatabase.findIndex(job => job.id === jobId);
+        if (jobIndex > -1) {
+            mockJobsDatabase[jobIndex].reviews.unshift({ ...review, status: 'pending' });
+            setJobs([...mockJobsDatabase]);
+        }
         showToast("Cảm ơn bạn đã gửi đánh giá! Đánh giá của bạn đang chờ duyệt.");
     }, [showToast]);
 
@@ -1943,25 +1947,35 @@ const App = () => {
     };
     
     const toggleUserLock = useCallback((userId: number) => {
-        setUsers(prev => prev.map(user => user.id === userId ? { ...user, isLocked: !user.isLocked } : user));
-        const user = users.find(u => u.id === userId);
-        if (user) {
-            logAdminAction(`${user.isLocked ? 'Mở khóa' : 'Khóa'} người dùng ${user.email} (ID: ${userId})`);
-            showToast(`Đã ${user.isLocked ? 'mở khóa' : 'khóa'} tài khoản.`);
+        const userIndex = mockUsersDatabase.findIndex(user => user.id === userId);
+        if (userIndex > -1) {
+            const user = mockUsersDatabase[userIndex];
+            user.isLocked = !user.isLocked;
+            setUsers([...mockUsersDatabase]);
+            logAdminAction(`${user.isLocked ? 'Khóa' : 'Mở khóa'} người dùng ${user.email} (ID: ${userId})`);
+            showToast(`Đã ${user.isLocked ? 'khóa' : 'mở khóa'} tài khoản.`);
         }
-    }, [users, logAdminAction, showToast]);
+    }, [logAdminAction, showToast]);
 
     const deleteJob = useCallback((jobId: number) => {
         if (window.confirm("Bạn có chắc chắn muốn xóa vĩnh viễn tin đăng này không?")) {
-            setJobs(prev => prev.filter(job => job.id !== jobId));
-            logAdminAction(`Xóa tin đăng ID: ${jobId}`);
-            showToast("Đã xóa tin đăng.");
+            const index = mockJobsDatabase.findIndex(job => job.id === jobId);
+            if (index > -1) {
+                mockJobsDatabase.splice(index, 1);
+                setJobs([...mockJobsDatabase]);
+                logAdminAction(`Xóa tin đăng ID: ${jobId}`);
+                showToast("Đã xóa tin đăng.");
+            }
         }
     }, [logAdminAction, showToast]);
     
     const handleUpdateJob = (updatedJob: Job) => {
-        setJobs(prev => prev.map(job => job.id === updatedJob.id ? updatedJob : job));
-        logAdminAction(`Cập nhật tin đăng "${updatedJob.title}" (ID: ${updatedJob.id})`);
+        const index = mockJobsDatabase.findIndex(job => job.id === updatedJob.id);
+        if (index > -1) {
+            mockJobsDatabase[index] = updatedJob;
+            setJobs([...mockJobsDatabase]);
+            logAdminAction(`Cập nhật tin đăng "${updatedJob.title}" (ID: ${updatedJob.id})`);
+        }
     };
 
     const handleReportAction = (reportId: number) => {
@@ -1971,15 +1985,12 @@ const App = () => {
     };
 
     const handleReviewStatusChange = (jobId: number, reviewIndex: number, newStatus: Review['status']) => {
-        setJobs(prev => prev.map(job => {
-            if (job.id === jobId) {
-                const newReviews = [...job.reviews];
-                newReviews[reviewIndex].status = newStatus;
-                return { ...job, reviews: newReviews };
-            }
-            return job;
-        }));
-        logAdminAction(`Thay đổi trạng thái đánh giá (Job ID: ${jobId}, Review Index: ${reviewIndex}) thành ${newStatus}`);
+        const jobIndex = mockJobsDatabase.findIndex(job => job.id === jobId);
+        if (jobIndex > -1) {
+            mockJobsDatabase[jobIndex].reviews[reviewIndex].status = newStatus;
+            setJobs([...mockJobsDatabase]);
+            logAdminAction(`Thay đổi trạng thái đánh giá (Job ID: ${jobId}, Review Index: ${reviewIndex}) thành ${newStatus}`);
+        }
     };
     
     const handleSubmitReport = (reason: string, details: string) => {
