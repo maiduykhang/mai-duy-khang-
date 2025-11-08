@@ -18,6 +18,7 @@ type Job = {
   benefits: string[];
   industry: string;
   employmentType: string;
+  interviewAddress: string; // New mandatory field
   recruiter: {
     name: string;
     email: string;
@@ -105,19 +106,13 @@ type Application = {
 };
 
 type CurrentUser = Omit<User, 'passwordHash'> | null;
-type AppView = 'main' | 'login' | 'signup' | 'employerDashboard' | 'adminDashboard' | 'adminLogin' | 'forbidden';
+type AppView = 'main' | 'login' | 'signup' | 'employerDashboard' | 'adminDashboard' | 'adminLogin';
 
 // --- CONFIGURATION ---
 // In a real production environment, these values should be loaded from environment variables (.env)
 // and not be hardcoded in the source code for security reasons.
 const CONFIG = {
     GOOGLE_API_KEY: process.env.API_KEY,
-    SUPER_ADMIN: {
-        username: 'superadmin@workhub.vn',
-        passwordHash: 'super_secret_pass', // IMPORTANT: Replace with a real, strong hash from your .env file
-        mfaSecret: '123456' // IMPORTANT: Replace with a real MFA secret from your .env file
-    },
-    TRUSTED_IPS: ['192.168.1.100'] // TODO: In production, load this from an environment variable as a comma-separated string
 };
 
 
@@ -149,6 +144,7 @@ const mockJobsDatabase: Job[] = [
         benefits: ["Lương thưởng theo giờ cạnh tranh", "Môi trường làm việc năng động", "Giảm giá đặc biệt cho nhân viên"],
         industry: "Bán lẻ",
         employmentType: "Bán thời gian",
+        interviewAddress: "Tầng 7, Tòa nhà Saigon Trade Center, 37 Tôn Đức Thắng, Q.1",
         recruiter: {
             name: "Phòng Nhân sự 7-Eleven Việt Nam",
             email: "tuyendung@7-eleven.vn",
@@ -181,6 +177,7 @@ const mockJobsDatabase: Job[] = [
         benefits: ["Được đào tạo bài bản về cà phê", "Lộ trình thăng tiến rõ ràng", "Bảo hiểm đầy đủ theo luật lao động"],
         industry: "F&B",
         employmentType: "Toàn thời gian",
+        interviewAddress: "86-88 Cao Thắng, Phường 4, Quận 3, TP.HCM",
         recruiter: {
             name: "Bộ phận Tuyển dụng The Coffee House",
             email: "hr@thecoffeehouse.vn",
@@ -213,6 +210,7 @@ const mockJobsDatabase: Job[] = [
         benefits: ["Bữa ăn miễn phí theo ca", "Lương tháng 13", "Cơ hội trở thành quản lý cửa hàng"],
         industry: "F&B",
         employmentType: "Bán thời gian",
+        interviewAddress: "Tầng 12, Tòa nhà Blue Sky, 01 Bạch Đằng, P.2, Q.Tân Bình",
         recruiter: {
             name: "KFC Việt Nam Tuyển Dụng",
             email: "recruitment@kfcvietnam.com.vn",
@@ -244,6 +242,7 @@ const mockJobsDatabase: Job[] = [
         benefits: ["Hoa hồng theo doanh số", "Được training sản phẩm mới thường xuyên", "Mua sản phẩm với giá ưu đãi của nhân viên"],
         industry: "Bán lẻ",
         employmentType: "Toàn thời gian",
+        interviewAddress: "172 Hai Bà Trưng, Phường Đa Kao, Quận 1, TP.HCM",
         recruiter: {
             name: "Guardian Vietnam HR",
             email: "tuyendung@guardian.com.vn",
@@ -706,10 +705,11 @@ const JobDetailModal = ({ job, onClose, handleAddNewReview, showToast, handleSta
                         <div className="pb-4 border-b">
                             <h4 className="text-lg font-bold text-gray-900 mb-3 border-b-2 pb-2">Vị trí & Địa điểm</h4>
                             <p className="text-base text-gray-900 mb-2"><strong>Nơi làm việc:</strong> {job.location}</p>
+                            {job.interviewAddress && <p className="text-base text-gray-900 mb-2"><strong>Địa chỉ phỏng vấn:</strong> {job.interviewAddress}</p>}
                             <a href={`https://www.google.com/maps?q=${job.workLocationGps[0]},${job.workLocationGps[1]}`} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-500 hover:underline">Xem bản đồ nơi làm việc</a>
                             <div className="mt-3">
                                 <button onClick={() => setShowInterviewMap(!showInterviewMap)} className="text-sm font-semibold w-full text-left flex justify-between items-center">
-                                   Địa chỉ phỏng vấn
+                                   Văn phòng nhà tuyển dụng
                                     <svg className={`w-4 h-4 transition-transform ${showInterviewMap ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                                 </button>
                                 {showInterviewMap && (
@@ -741,7 +741,7 @@ const JobDetailModal = ({ job, onClose, handleAddNewReview, showToast, handleSta
 }
 
 const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void, onPost: (jobData: Omit<Job, 'id' | 'rating' | 'reviewCount' | 'reviews' | 'postedDate' | 'isFeatured' | 'companyId'>, isFeatured: boolean) => void, currentUser: CurrentUser }) => {
-    const [formData, setFormData] = useState<any>({ company: "Công ty TNHH ABC", title: "Nhân viên Marketing", logo: "https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg", location: "123 Đường ABC, Quận 1", workLocationGps: [10.7769, 106.7009], salary: "Thoả thuận", benefits: "BHXH, Lương tháng 13", description: "Mô tả công việc...", schedule: "Giờ hành chính", requirements: "Yêu cầu...", industry: "Marketing", employmentType: "Toàn thời gian", recruiterEmail: "hr@abc.com", recruiterHotline: "0123456789", recruiterOfficeLocation: "456 Đường XYZ, Quận 3", recruiterOfficeGpsLink: "https://www.google.com/maps?q=10.7800,106.6900" });
+    const [formData, setFormData] = useState<any>({ company: "Công ty TNHH ABC", title: "Nhân viên Marketing", logo: "https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg", location: "123 Đường ABC, Quận 1", workLocationGps: [10.7769, 106.7009], salary: "Thoả thuận", benefits: "BHXH, Lương tháng 13", interviewAddress: "456 Đường XYZ, Quận 3", description: "Mô tả công việc...", schedule: "Giờ hành chính", requirements: "Yêu cầu...", industry: "Marketing", employmentType: "Toàn thời gian", recruiterEmail: "hr@abc.com", recruiterHotline: "0123456789", recruiterOfficeLocation: "456 Đường XYZ, Quận 3", recruiterOfficeGpsLink: "https://www.google.com/maps?q=10.7800,106.6900" });
     const [logoPreview, setLogoPreview] = useState<string | null>(formData.logo);
     const [formErrors, setFormErrors] = useState<any>({});
     const [postingType, setPostingType] = useState<'standard' | 'featured'>('standard');
@@ -802,6 +802,7 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
         if (!formData.recruiterEmail) errors.recruiterEmail = "Bắt buộc.";
         if (!formData.salary) errors.salary = "Bắt buộc.";
         if (!formData.benefits) errors.benefits = "Bắt buộc.";
+        if (!formData.interviewAddress) errors.interviewAddress = "Bắt buộc.";
         if (!formData.description) errors.description = "Bắt buộc.";
         if (!formData.schedule) errors.schedule = "Bắt buộc.";
         if (!formData.requirements) errors.requirements = "Bắt buộc.";
@@ -889,6 +890,11 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
                             <label htmlFor="benefits" className="block text-sm font-medium text-gray-800 mb-1">Phúc lợi <span className="text-red-500">*</span></label>
                             <input type="text" name="benefits" id="benefits" value={formData.benefits} onChange={handleChange} className="w-full border-gray-300 rounded-md" placeholder="Cách nhau bởi dấu phẩy" />
                             {formErrors.benefits && <p className="text-red-500 text-xs mt-1">{formErrors.benefits}</p>}
+                        </div>
+                        <div className="md:col-span-2">
+                            <label htmlFor="interviewAddress" className="block text-sm font-medium text-gray-800 mb-1">Địa chỉ Phỏng vấn <span className="text-red-500">*</span></label>
+                            <input type="text" name="interviewAddress" id="interviewAddress" value={formData.interviewAddress} onChange={handleChange} className="w-full border-gray-300 rounded-md" required />
+                            {formErrors.interviewAddress && <p className="text-red-500 text-xs mt-1">{formErrors.interviewAddress}</p>}
                         </div>
                      </div>
                      
@@ -1183,19 +1189,19 @@ const AuthPage = ({ children, title, onBack }: { children: React.ReactNode, titl
     </main>
 );
 
-const LoginPage = ({ handleLogin, showToast, handleNavigate, users }: { handleLogin: (email: string, pass: string) => boolean, showToast: (message: string) => void, handleNavigate: (view: AppView) => void, users: User[] }) => {
+const LoginPage = ({ handleLogin, showToast, handleNavigate, users }: { handleLogin: (email: string, pass: string, context?: 'user' | 'admin') => boolean, showToast: (message: string) => void, handleNavigate: (view: AppView) => void, users: User[] }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
-      handleLogin(email, password);
+      handleLogin(email, password, 'user');
   };
 
   const handleFacebookLogin = () => {
     const fbUser = users.find(u => u.email === 'hr@thecoffeehouse.vn');
     if (fbUser) {
-        handleLogin(fbUser.email, 'hashed_password_123');
+        handleLogin(fbUser.email, 'hashed_password_123', 'user');
     } else {
         showToast("Tài khoản Facebook chưa được liên kết. Vui lòng đăng ký.");
         handleNavigate('signup');
@@ -1231,11 +1237,38 @@ const LoginPage = ({ handleLogin, showToast, handleNavigate, users }: { handleLo
         </p>
         <div className="mt-6 pt-4 border-t border-gray-200">
             <p className="text-center text-xs text-gray-500">
-                Dành cho quản trị viên? <button type="button" onClick={(e) => { e.preventDefault(); window.location.hash = 'secure-panel-49cax'; }} className="font-medium text-gray-600 hover:underline">Đăng nhập tại đây</button>.
+                Dành cho quản trị viên? <button type="button" onClick={() => handleNavigate('adminLogin')} className="font-medium text-gray-600 hover:underline">Đăng nhập tại đây</button>.
             </p>
         </div>
       </AuthPage>
   );
+};
+
+const AdminLoginPage = ({ handleLogin, handleNavigate }: { handleLogin: (email: string, pass: string, context: 'admin') => boolean, handleNavigate: (view: AppView) => void }) => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        handleLogin(email, password, 'admin');
+    };
+
+    return (
+        <AuthPage title="Đăng nhập Quản trị viên" onBack={() => handleNavigate('login')}>
+            <p className="text-center text-sm text-gray-500 mb-6">Chỉ dành cho nhân viên được ủy quyền.</p>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">Email quản trị</label>
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="mt-1 w-full border-gray-300 rounded-md shadow-sm" />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">Mật khẩu</label>
+                    <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="mt-1 w-full border-gray-300 rounded-md shadow-sm" />
+                </div>
+                <button type="submit" className="w-full bg-red-600 text-white py-2 rounded-md font-semibold hover:bg-red-700">Đăng nhập an toàn</button>
+            </form>
+        </AuthPage>
+    );
 };
 
 const SignupPage = ({ handleSignup, handleNavigate, showToast }: { handleSignup: (data: any) => boolean, handleNavigate: (view: AppView) => void, showToast: (message: string) => void }) => {
@@ -1344,8 +1377,8 @@ const EmployerDashboard = ({ currentUser, jobs, payments, privateChats, users, h
                                 <tr key={p.id} className="border-b border-gray-200 hover:bg-gray-50">
                                     <td className="p-3 font-mono text-gray-800 font-medium">{p.id}</td>
                                     <td className="p-3">{p.date}</td>
-                                    <td className="p-3">{p.service}</td>
-                                    <td className="p-3 text-right font-semibold text-gray-900">{p.amount.toLocaleString('vi-VN')}đ</td>
+                                    <td className="p-3 font-bold text-gray-800">{p.service}</td>
+                                    <td className="p-3 text-right font-bold text-gray-900">{p.amount.toLocaleString('vi-VN')}đ</td>
                                     <td className="p-3 text-center">
                                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${p.status === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{p.status}</span>
                                     </td>
@@ -1387,9 +1420,16 @@ const EmployerDashboard = ({ currentUser, jobs, payments, privateChats, users, h
 
 const AdminDashboard = ({ currentUser, handleNavigate, users, jobs, reports, actionLogs, toggleUserLock, deleteJob, showToast, handleOpenEditModal, handleReportAction, handleReviewStatusChange }: { currentUser: CurrentUser, handleNavigate: (view: AppView) => void, users: User[], jobs: Job[], reports: Report[], actionLogs: ActionLog[], toggleUserLock: (userId: number) => void, deleteJob: (jobId: number) => void, showToast: (message: string) => void, handleOpenEditModal: (job: Job) => void, handleReportAction: (reportId: number, action: 'resolve') => void, handleReviewStatusChange: (jobId: number, reviewIndex: number, newStatus: Review['status']) => void }) => {
     const [activeTab, setActiveTab] = useState<'jobs' | 'users' | 'moderation' | 'logs'>('jobs');
+    
+    // This is a crucial security check. If a non-admin somehow reaches this component, redirect them.
+    useEffect(() => {
+        if (!currentUser || currentUser.role !== 'admin') {
+            handleNavigate('main');
+        }
+    }, [currentUser, handleNavigate]);
+
     if (!currentUser || currentUser.role !== 'admin') {
-        handleNavigate('main');
-        return null;
+        return null; // Render nothing while redirecting
     }
     
     const allReviews = useMemo(() => jobs.flatMap(job => job.reviews.map((review, index) => ({ ...review, jobId: job.id, jobTitle: job.title, reviewIndex: index }))), [jobs]);
@@ -1411,7 +1451,7 @@ const AdminDashboard = ({ currentUser, handleNavigate, users, jobs, reports, act
     return (
         <main className="container mx-auto p-6">
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Admin Dashboard</h1>
-            <p className="text-gray-600 mb-6">Quản lý toàn bộ hệ thống. Chào mừng đến với <code className="bg-gray-200 text-sm p-1 rounded">/secure-panel-49cax/dashboard</code></p>
+            <p className="text-gray-600 mb-6">Quản lý toàn bộ hệ thống. Chào mừng, {currentUser.name}.</p>
              <div className="flex border-b mb-6 overflow-x-auto">
                 <button onClick={() => setActiveTab('jobs')} className={`flex-shrink-0 px-4 py-2 text-sm font-semibold ${activeTab === 'jobs' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-700'}`}>Quản lý tin đăng</button>
                 <button onClick={() => setActiveTab('users')} className={`flex-shrink-0 px-4 py-2 text-sm font-semibold ${activeTab === 'users' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-700'}`}>Quản lý người dùng</button>
@@ -1496,30 +1536,6 @@ const AdminDashboard = ({ currentUser, handleNavigate, users, jobs, reports, act
     );
 };
 
-const ForbiddenPage = ({ onSimulateTrustedIp }: { onSimulateTrustedIp: () => void }) => (
-    <main className="container mx-auto p-6 flex justify-center items-center h-[calc(100vh-68px)]">
-        <div className="text-center bg-white p-10 rounded-lg shadow-lg max-w-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-16 w-16 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-            </svg>
-            <h1 className="text-3xl font-bold text-red-600 mt-4 mb-2">403 - Truy cập bị cấm</h1>
-            <p className="text-gray-700 mb-4">
-                Đây là một tính năng bảo mật. Khu vực quản trị chỉ cho phép truy cập từ các địa chỉ IP được tin cậy. 
-                Địa chỉ IP của bạn không nằm trong danh sách này.
-            </p>
-            <p className="text-gray-600 text-sm mb-6">
-                Trong môi trường thực tế, quản trị viên sẽ cần thêm IP của Vercel vào danh sách cho phép.
-            </p>
-            <button
-                onClick={onSimulateTrustedIp}
-                className="bg-gray-200 text-gray-800 px-4 py-2 rounded-md text-sm hover:bg-gray-300"
-            >
-                (Mô phỏng) Bỏ qua kiểm tra IP cho phiên này
-            </button>
-        </div>
-    </main>
-);
-
 const PrivateChatModal = ({ session, currentUser, users, job, onClose, onSendMessage }: { session: PrivateChatSession, currentUser: CurrentUser, users: User[], job: Job | undefined, onClose: () => void, onSendMessage: (sessionId: string, text: string) => void }) => {
     const [message, setMessage] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1601,8 +1617,6 @@ const App = () => {
 
     const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
 
-    const [isIpTrusted, setIsIpTrusted] = useState(process.env.NODE_ENV === 'development'); // Dev default for easier testing
-
     // --- TOAST NOTIFICATION ---
     const showToast = useCallback((message: string) => {
         setToast({ message, id: Date.now() });
@@ -1611,17 +1625,8 @@ const App = () => {
 
     // --- NAVIGATION HANDLER ---
     const handleNavigate = useCallback((targetView: AppView) => {
-        const currentView = view;
-        const isAdminArea = (v: AppView) => ['adminDashboard', 'adminLogin', 'forbidden'].includes(v);
-        const isPublicArea = (v: AppView) => ['main', 'login', 'signup'].includes(v);
-
-        if (isAdminArea(currentView) && isPublicArea(targetView)) {
-            if (window.location.hash) {
-                history.pushState("", document.title, window.location.pathname + window.location.search);
-            }
-        }
         setView(targetView);
-    }, [view]);
+    }, []);
     
     // --- ADMIN ACTION LOGGING ---
     const logAdminAction = useCallback((action: string) => {
@@ -1717,17 +1722,6 @@ const App = () => {
     }, []);
 
     useEffect(() => {
-        const handleHashChange = () => {
-            if (window.location.hash === '#secure-panel-49cax') {
-                 handleNavigate(isIpTrusted ? 'adminLogin' : 'forbidden');
-            }
-        };
-        window.addEventListener('hashchange', handleHashChange);
-        handleHashChange(); // Check on initial load
-        return () => window.removeEventListener('hashchange', handleHashChange);
-    }, [isIpTrusted, handleNavigate]);
-
-    useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
                 setIsNotificationOpen(false);
@@ -1796,10 +1790,27 @@ const App = () => {
         });
     }, [showToast]);
 
-    const handleLogin = useCallback((email: string, pass: string): boolean => {
+    const handleLogin = useCallback((email: string, pass: string, context: 'user' | 'admin' = 'user'): boolean => {
         const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-        if (user && (user.passwordHash === 'hashed_password_123' || user.passwordHash === 'admin_pass')) {
-             if (user.isLocked) {
+
+        if (!user) {
+            showToast("Email hoặc mật khẩu không chính xác.");
+            return false;
+        }
+
+        // Role-based access control
+        if (context === 'admin' && user.role !== 'admin') {
+            showToast("Tài khoản này không có quyền quản trị.");
+            return false;
+        }
+        if (context === 'user' && user.role === 'admin') {
+            showToast("Tài khoản quản trị viên phải đăng nhập tại trang admin.");
+            return false;
+        }
+
+        // Simplified password check for demo
+        if (user.passwordHash === 'hashed_password_123' || user.passwordHash === 'admin_pass') {
+            if (user.isLocked) {
                 showToast("Tài khoản của bạn đã bị khóa.");
                 return false;
             }
@@ -1811,6 +1822,7 @@ const App = () => {
             showToast(`Chào mừng ${user.name}!`);
             return true;
         }
+
         showToast("Email hoặc mật khẩu không chính xác.");
         return false;
     }, [users, showToast, handleNavigate]);
@@ -2100,16 +2112,14 @@ const App = () => {
         switch (view) {
             case 'login':
                 return <LoginPage handleLogin={handleLogin} showToast={showToast} handleNavigate={handleNavigate} users={users} />;
+            case 'adminLogin':
+                return <AdminLoginPage handleLogin={handleLogin} handleNavigate={handleNavigate} />;
             case 'signup':
                 return <SignupPage handleSignup={handleSignup} handleNavigate={handleNavigate} showToast={showToast} />;
             case 'employerDashboard':
                 return <EmployerDashboard currentUser={currentUser} jobs={jobs} payments={payments} privateChats={privateChats} users={users} handleEditJob={setJobToEdit} handleDeleteJob={deleteJob} openPrivateChat={setActivePrivateChat}/>;
             case 'adminDashboard':
                 return <AdminDashboard currentUser={currentUser} handleNavigate={handleNavigate} users={users} jobs={jobs} reports={reports} actionLogs={actionLogs} toggleUserLock={toggleUserLock} deleteJob={deleteJob} showToast={showToast} handleOpenEditModal={setJobToEdit} handleReportAction={handleReportAction} handleReviewStatusChange={handleReviewStatusChange} />;
-            case 'adminLogin':
-                return <LoginPage handleLogin={handleLogin} showToast={showToast} handleNavigate={handleNavigate} users={users} />; // Simplified, can be a separate component
-            case 'forbidden':
-                return <ForbiddenPage onSimulateTrustedIp={() => setIsIpTrusted(true)} />;
             case 'main':
             default:
                 return <MainContent filters={filters} handleFilterChange={handleFilterChange} uniqueIndustries={uniqueIndustries} showOnlySaved={showOnlySaved} setShowOnlySaved={setShowOnlySaved} filteredJobs={filteredJobs} setSelectedJob={setSelectedJob} savedJobIds={savedJobIds} toggleSaveJob={toggleSaveJob} />;
