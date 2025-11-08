@@ -1,76 +1,76 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Content } from "@google/genai";
 
 // Initialize AI Client outside the handler to be reused across invocations.
-// This helps optimize "cold starts" for the serverless function.
 let ai: GoogleGenAI | null = null;
 if (process.env.API_KEY) {
     ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 }
 
-// This function will be deployed as a Vercel Serverless Function.
-// It acts as a secure proxy between the frontend and the Google AI API.
+// This function acts as a secure, state-aware proxy to the Google AI API.
 export default async function handler(req: any, res: any) {
-    // Reinforce connection stability with Keep-Alive header
     res.setHeader('Connection', 'keep-alive');
     
-    // Only allow POST requests
     if (req.method !== 'POST') {
         res.setHeader('Allow', ['POST']);
         return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    // --- Step 1: Check for API Key configuration ---
     if (!ai) {
         console.error('[Chatbot Proxy] CRITICAL: Google AI API key is not configured on the server.');
-        return res.status(503).json({ error: 'Service Unavailable: The AI service is not configured on the server.' });
+        return res.status(503).json({ error: 'Service Unavailable: The AI service is not configured.' });
     }
 
     try {
-        const { type, message } = req.body;
-
-        // --- Step 2: Debug Logging ---
-        console.log(`[Chatbot Proxy] Received request: type='${type}'`);
+        const { message, history } = req.body;
         
-        if (!type || !message) {
-             return res.status(400).json({ error: 'Invalid request body, "type" and "message" are required.' });
+        if (!message || !Array.isArray(history)) {
+             return res.status(400).json({ error: 'Invalid request body, "message" and "history" (array) are required.' });
         }
 
-        // --- Step 3: AI Client is already initialized, handle request types ---
-        let geminiResponseText: string;
+        // Convert frontend chat history to Gemini's format
+        const contents: Content[] = history.map((msg: { sender: 'user' | 'bot', text: string }) => ({
+            role: msg.sender === 'user' ? 'user' : 'model',
+            parts: [{ text: msg.text }],
+        }));
+        // Add the new user message
+        contents.push({ role: 'user', parts: [{ text: message }] });
 
-        if (type === 'intent') {
-            const intentPrompt = `System: You are an intent classification AI for a job board chatbot. Analyze the user's message and determine if they are searching for a job or just having a general conversation. If they are searching for a job, identify the keywords (job title, location, skills). Respond ONLY with a JSON object in the format: For job search: { "intent": "JOB_SEARCH", "keywords": "extracted keywords" } For anything else: { "intent": "GENERAL_CONVERSATION" }\n\nUser message: "${message}"`;
-            
-            const result = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: intentPrompt,
-                config: { 
-                    responseMimeType: "application/json", 
-                    responseSchema: { 
-                        type: Type.OBJECT, 
-                        properties: { 
-                            intent: { type: Type.STRING }, 
-                            keywords: { type: Type.STRING }
+        const systemInstruction = `You are an AI assistant for a job board called WorkHub. Your goal is to help users find jobs and answer questions. Analyze the user's latest message in the context of the conversation. 
+        - If the user is asking to find jobs, identify relevant keywords (like job title, location, skills) and set intent to "JOB_SEARCH".
+        - For any other conversation (greetings, questions about the company, etc.), set intent to "GENERAL_CONVERSATION" and clear the keywords.
+        - Your reply must always be helpful, friendly, and in Vietnamese.
+        - You MUST respond with a JSON object.`;
+        
+        const result = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: contents,
+            config: { 
+                systemInstruction: systemInstruction,
+                responseMimeType: "application/json", 
+                responseSchema: { 
+                    type: Type.OBJECT, 
+                    properties: { 
+                        intent: { 
+                            type: Type.STRING,
+                            description: "Either 'JOB_SEARCH' or 'GENERAL_CONVERSATION'"
+                        }, 
+                        keywords: { 
+                            type: Type.STRING,
+                            description: "Keywords for job search, or an empty string."
+                        },
+                        reply: {
+                            type: Type.STRING,
+                            description: "Your friendly, Vietnamese reply to the user."
                         }
-                    }
+                    },
+                    required: ["intent", "keywords", "reply"]
                 }
-            });
-            geminiResponseText = result.text;
+            }
+        });
 
-        } else if (type === 'chat') {
-            const chatPrompt = `User question: "${message}"\nAnswer in Vietnamese. Be friendly and helpful.`;
-            const result = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: chatPrompt,
-            });
-            geminiResponseText = result.text;
-
-        } else {
-            return res.status(400).json({ error: 'Invalid request type specified.' });
-        }
-
-        // --- Step 4: Debug Log and Send Response ---
-        console.log('[Chatbot Proxy] Successfully connected to AI service and received a response.');
+        const geminiResponseText = result.text;
+        
+        console.log('[Chatbot Proxy] Successfully received AI response.');
         res.status(200).json({ data: geminiResponseText });
 
     } catch (error: any) {

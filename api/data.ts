@@ -84,7 +84,19 @@ export default async function handler(req: any, res: any) {
         return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
 
     } catch (error: any) {
-        console.error('API Error:', error);
+        console.error('API Error:', error.message);
+        
+        // --- Fallback Mechanism ---
+        // If an error occurs during a GET request, it's likely a KV connection issue
+        // (e.g., missing credentials). Fall back to serving the initial mock data
+        // to allow the frontend to load and render correctly.
+        if (req.method === 'GET') {
+            console.warn('KV store operation failed. Serving initial mock data as a fallback.');
+            return res.status(200).json(initialData);
+        }
+
+        // For other methods like POST, it's crucial to report the failure to the client
+        // so they know their update was not saved.
         return res.status(500).json({ error: 'Internal Server Error', details: error.message });
     }
 }

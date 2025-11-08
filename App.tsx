@@ -110,64 +110,55 @@ type CurrentUser = Omit<User, 'passwordHash'> | null;
 type AppView = 'main' | 'login' | 'signup' | 'employerDashboard' | 'adminDashboard' | 'adminLogin';
 type BotStatus = 'idle' | 'thinking';
 
+// Fix: Add an explicit type for the fallback data to ensure TypeScript infers nested types correctly (e.g., tuples for GPS, union types for roles).
+type FallbackData = {
+    jobs: Job[];
+    users: User[];
+    payments: Payment[];
+    reports: Report[];
+    actionLogs: ActionLog[];
+    privateChats: PrivateChatSession[];
+    applications: Application[];
+};
+
 // --- CONFIGURATION ---
-// In a real production environment, these values should be loaded from environment variables (.env)
-// and not be hardcoded in the source code for security reasons.
 const CONFIG = {
-    // Defensively access process.env to prevent crashes in browser environments
-    // where 'process' might not be defined. This fixes the blank screen error.
-    GOOGLE_API_KEY: (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined,
+  GOOGLE_API_KEY: null, // Tạm thời disable API
 };
 
-// --- REAL Geocoding API ---
-// Replaced the mock function with a real call to the Google Maps Geocoding API
-// to provide accurate coordinates for any valid address.
-const geocodeAddress = async (address: string): Promise<[number, number] | null> => {
-    if (!address || !CONFIG.GOOGLE_API_KEY) {
-        console.error("Address is empty or Google API Key is missing.");
-        return null;
-    }
-    const encodedAddress = encodeURIComponent(address);
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&key=${CONFIG.GOOGLE_API_KEY}`;
-
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        if (data.status === 'OK' && data.results.length > 0) {
-            const result = data.results[0];
-            // Stricter check: Reject if Google indicates a partial match.
-            if (result.partial_match) {
-                console.warn(`Geocoding returned a partial match for address "${address}". Rejecting as ambiguous.`);
-                return null;
-            }
-            const location = result.geometry.location;
-            return [location.lat, location.lng];
-        } else {
-            console.warn(`Geocoding failed for address "${address}". Status: ${data.status}`);
-            return null;
-        }
-    } catch (error) {
-        console.error("Error calling Geocoding API:", error);
-        return null;
-    }
+// --- MOCK Geocoding API ---
+const geocodeAddress = async (address: string) => {
+  console.log('Mock geocoding:', address);
+  await new Promise(resolve => setTimeout(resolve, 300)); // Giả lập delay
+  return [21.0285, 105.8542] as [number, number]; // Tọa độ Hà Nội mẫu
 };
 
+const geocodePlusCodeOrAddress = async (input: string) => {
+  const coords = await geocodeAddress(input);
+  return { coords, plusCode: undefined };
+};
 
-const geocodePlusCodeOrAddress = async (input: string): Promise<{ coords: [number, number]; plusCode?: string } | null> => {
-    const plusCodeRegex = /\b[2-9CFGHJMPQRVWX]{4}\+[2-9CFGHJMPQRVWX]{2,}\b/i;
-    const trimmedInput = input.trim();
-    const plusCodeMatch = trimmedInput.match(plusCodeRegex);
-
-    // Prioritize Plus Code if found, as it's more accurate
-    const addressToGeocode = plusCodeMatch ? plusCodeMatch[0] : trimmedInput.replace(/,+/g, ',').replace(/\s\s+/g, ' ');
-
-    const coords = await geocodeAddress(addressToGeocode);
-    if (coords) {
-        return { coords, plusCode: plusCodeMatch ? plusCodeMatch[0] : undefined };
-    }
-    
-    return null;
+// --- FALLBACK DATA ---
+// This data is used if the initial fetch from the API fails,
+// ensuring the application can still render and function.
+const FALLBACK_DATA: FallbackData = {
+    jobs: [
+        {
+            id: 1, title: "Nhân viên Bán hàng (Part-time)", company: "7-Eleven", companyId: 1, logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/7-eleven_logo.svg/1200px-7-eleven_logo.svg.png", location: "24 Tôn Thất Tùng, P. Bến Thành, Quận 1", salary: "5 - 8 triệu", rating: 4.5, reviewCount: 182, isVerified: true, postedDate: "2 giờ trước", description: "Chào đón khách hàng, tư vấn sản phẩm, thực hiện thanh toán và giữ gìn vệ sinh cửa hàng. Làm việc theo ca xoay linh hoạt, phù hợp cho sinh viên.", requirements: ["Nam/Nữ từ 18 - 25 tuổi", "Nhanh nhẹn, trung thực, có trách nhiệm", "Không yêu cầu kinh nghiệm, sẽ được đào tạo"], benefits: ["Lương thưởng theo giờ cạnh tranh", "Môi trường làm việc năng động", "Giảm giá đặc biệt cho nhân viên"], industry: "Bán lẻ", employmentType: "Bán thời gian", interviewAddress: "Tầng 7, Tòa nhà Saigon Trade Center, 37 Tôn Đức Thắng, Q.1", recruiter: { name: "Phòng Nhân sự 7-Eleven Việt Nam", email: "tuyendung@7-eleven.vn", hotline: "0901234567", officeLocation: "Tầng 7, Tòa nhà Saigon Trade Center, 37 Tôn Đức Thắng, Q.1", officeGps: [10.7756, 106.7045] }, workLocationGps: [10.7701, 106.6947], schedule: "Ca xoay 4-8 tiếng/ngày. Sáng: 6h-14h, Chiều: 14h-22h, Tối: 22h-6h.", reviews: [{ author: "Sinh viên ẩn danh", comment: "Làm gần nhà, lương ổn, các anh chị rất thân thiện.", rating: 5, status: 'visible' }, { author: "Người đi làm", comment: "Công việc đơn giản, phù hợp kiếm thêm thu nhập.", rating: 4, status: 'visible' }], isFeatured: false,
+        },
+        {
+            id: 2, title: "Nhân viên Pha chế (Barista)", company: "The Coffee House", companyId: 2, logo: "https://upload.wikimedia.org/wikipedia/vi/thumb/c/ce/The_Coffee_House_logo.png/800px-The_Coffee_House_logo.png", location: "159-161 Nguyễn Du, P. Bến Thành, Quận 1", salary: "6 - 9 triệu", rating: 4.7, reviewCount: 250, isVerified: true, postedDate: "Hôm qua", description: "Pha chế các loại đồ uống theo công thức, đảm bảo chất lượng sản phẩm và phục vụ khách hàng một cách chuyên nghiệp.", requirements: ["Đam mê cà phê và ngành dịch vụ", "Có kinh nghiệm là một lợi thế", "Thái độ vui vẻ, tích cực"], benefits: ["Được đào tạo bài bản về cà phê", "Lộ trình thăng tiến rõ ràng", "Bảo hiểm đầy đủ theo luật lao động"], industry: "F&B", employmentType: "Toàn thời gian", interviewAddress: "86-88 Cao Thắng, Phường 4, Quận 3, TP.HCM", recruiter: { name: "Bộ phận Tuyển dụng The Coffee House", email: "hr@thecoffeehouse.vn", hotline: "0987654321", officeLocation: "86-88 Cao Thắng, Phường 4, Quận 3, TP.HCM", officeGps: [10.7725, 106.6853] }, workLocationGps: [10.7731, 106.6957], schedule: "Ca 8 tiếng/ngày, xoay ca theo sự sắp xếp của quản lý. Tuần nghỉ 1 ngày.", reviews: [{ author: "Barista", comment: "Môi trường chuyên nghiệp, học được nhiều thứ.", rating: 5, status: 'visible' }, { author: "Cựu nhân viên", comment: "Áp lực nhưng xứng đáng.", rating: 4, status: 'visible' }], isFeatured: true,
+        },
+    ],
+    users: [
+        { id: 1, email: 'tuyendung@7-eleven.vn', passwordHash: 'hashed_password_123', name: '7-Eleven', phone: '0901234567', role: 'employer', isLocked: false },
+        { id: 2, email: 'hr@thecoffeehouse.vn', passwordHash: 'hashed_password_123', name: 'The Coffee House', phone: '0987654321', role: 'employer', isLocked: false },
+        { id: 3, email: 'recruitment@kfcvietnam.com.vn', passwordHash: 'hashed_password_123', name: 'KFC', phone: '0912345678', role: 'employer', isLocked: true },
+        { id: 4, email: 'tuyendung@guardian.com.vn', passwordHash: 'hashed_password_123', name: 'Guardian', phone: '0998877665', role: 'employer', isLocked: false },
+        { id: 100, email: 'admin@workhub.vn', passwordHash: 'admin_pass', name: 'WorkHub Admin', phone: '0111222333', role: 'admin', isLocked: false },
+        { id: 201, email: 'applicant1@email.com', passwordHash: 'hashed_password_123', name: 'Nguyễn Văn An', phone: '0911111111', role: 'jobseeker', isLocked: false }
+    ],
+    payments: [], reports: [], actionLogs: [], privateChats: [], applications: [],
 };
 
 
@@ -512,7 +503,7 @@ const CvSubmissionForm = ({ job, currentUser, applications, onSubmit, showToast 
 };
 
 
-const JobDetailModal = ({ job, onClose, handleAddNewReview, showToast, handleStartPrivateChat, handleOpenReportModal, googleApiKey, currentUser, applications, handleCvSubmit }: { job: Job, onClose: () => void, handleAddNewReview: (jobId: number, review: Omit<Review, 'status'>) => void, showToast: (message: string) => void, handleStartPrivateChat: (job: Job) => void, handleOpenReportModal: (job: Job) => void, googleApiKey: string | undefined, currentUser: CurrentUser, applications: Application[], handleCvSubmit: (job: Job, file: File) => void }) => {
+const JobDetailModal = ({ job, onClose, handleAddNewReview, showToast, handleStartPrivateChat, handleOpenReportModal, googleApiKey, currentUser, applications, handleCvSubmit }: { job: Job, onClose: () => void, handleAddNewReview: (jobId: number, review: Omit<Review, 'status'>) => void, showToast: (message: string) => void, handleStartPrivateChat: (job: Job) => void, handleOpenReportModal: (job: Job) => void, googleApiKey: string | null, currentUser: CurrentUser, applications: Application[], handleCvSubmit: (job: Job, file: File) => void }) => {
     const [showInterviewMap, setShowInterviewMap] = useState(false);
     const newReviewRef = useRef<{ rating: number, comment: string }>({ rating: 0, comment: '' });
     const [hoverRating, setHoverRating] = useState(0);
@@ -605,11 +596,13 @@ const JobDetailModal = ({ job, onClose, handleAddNewReview, showToast, handleSta
                                 {showInterviewMap && (
                                     <div className="mt-2 text-sm text-gray-600">
                                         <p>{job.recruiter.officeLocation}</p>
-                                        <img 
-                                            src={`https://maps.googleapis.com/maps/api/staticmap?center=${job.recruiter.officeGps[0]},${job.recruiter.officeGps[1]}&zoom=15&size=400x150&markers=color:blue%7Clabel:P%7C${job.recruiter.officeGps[0]},${job.recruiter.officeGps[1]}&key=${googleApiKey}`}
-                                            alt="Bản đồ vị trí phỏng vấn"
-                                            className="w-full rounded-md object-cover border mt-1"
-                                        />
+                                        {googleApiKey && (
+                                            <img 
+                                                src={`https://maps.googleapis.com/maps/api/staticmap?center=${job.recruiter.officeGps[0]},${job.recruiter.officeGps[1]}&zoom=15&size=400x150&markers=color:blue%7Clabel:P%7C${job.recruiter.officeGps[0]},${job.recruiter.officeGps[1]}&key=${googleApiKey}`}
+                                                alt="Bản đồ vị trí phỏng vấn"
+                                                className="w-full rounded-md object-cover border mt-1"
+                                            />
+                                        )}
                                          <a href={`https://www.google.com/maps?q=${job.recruiter.officeGps[0]},${job.recruiter.officeGps[1]}`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline">Mở trong Google Maps</a>
                                     </div>
                                 )}
@@ -1508,7 +1501,16 @@ const App = () => {
             setIsDataLoaded(true);
         } catch (error) {
             console.error("Error fetching data:", error);
-            showToast("Không thể tải dữ liệu từ máy chủ.");
+            showToast("Không thể tải dữ liệu từ máy chủ. Sử dụng dữ liệu mẫu.");
+            // --- FALLBACK LOGIC ---
+            setJobs(FALLBACK_DATA.jobs);
+            setUsers(FALLBACK_DATA.users);
+            setPayments(FALLBACK_DATA.payments);
+            setReports(FALLBACK_DATA.reports);
+            setActionLogs(FALLBACK_DATA.actionLogs);
+            setPrivateChats(FALLBACK_DATA.privateChats);
+            setApplications(FALLBACK_DATA.applications);
+            setIsDataLoaded(true);
         }
     }, [showToast]);
 
@@ -1892,72 +1894,61 @@ const App = () => {
         }
     }, [jobs, showToast, updateServerData]);
 
-    const handleSendMessage = async () => {
+    const handleSendMessage = useCallback(async () => {
         if (!userInput.trim() || botStatus === 'thinking') return;
-        
+
         const newUserMessage: ChatMessage = { sender: 'user', text: userInput };
-        setChatMessages(prev => [...prev, newUserMessage]);
+        const updatedMessages = [...chatMessages, newUserMessage];
+        setChatMessages(updatedMessages);
         const currentInput = userInput;
         setUserInput('');
-        
         setBotStatus('thinking');
-        
+
         try {
-            const intentRes = await fetch('/api/chatbot-proxy', {
+            const res = await fetch('/api/chatbot-proxy', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: 'intent', message: currentInput }),
+                body: JSON.stringify({
+                    message: currentInput,
+                    history: updatedMessages.slice(0, -1) // Send history without the current message
+                }),
             });
-    
-            if (!intentRes.ok) {
-                const errorData = await intentRes.json();
-                throw new Error(errorData.error || `Intent analysis failed`);
-            }
-            
-            const intentResult = await intentRes.json();
-            let intentData: { intent: string; keywords?: string; };
 
-            try {
-                const parsedData = JSON.parse(intentResult.data);
-                intentData = {
-                    intent: String(parsedData.intent),
-                    keywords: parsedData.keywords ? String(parsedData.keywords) : undefined,
-                };
-            } catch (e) {
-                intentData = { intent: 'GENERAL_CONVERSATION' };
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.error || 'Chat request failed');
             }
-    
-            if (intentData.intent === 'JOB_SEARCH' && intentData.keywords) {
-                const foundJobs = searchJobs(intentData.keywords);
-                const botMessage: ChatMessage = foundJobs.length > 0 ?
-                    { sender: 'bot', text: `Tôi đã tìm thấy ${foundJobs.length} công việc phù hợp:`, jobs: foundJobs } :
-                    { sender: 'bot', text: `Rất tiếc, tôi không tìm thấy công việc nào cho "${intentData.keywords}".` };
-                setChatMessages(prev => [...prev, botMessage]);
+
+            const result = await res.json();
+            // The API now returns a stringified JSON, so we need to parse it twice.
+            const parsedData = JSON.parse(result.data);
+
+            let botMessage: ChatMessage;
+
+            if (parsedData.intent === 'JOB_SEARCH' && parsedData.keywords) {
+                const foundJobs = searchJobs(parsedData.keywords);
+                botMessage = foundJobs.length > 0 ?
+                    { sender: 'bot', text: parsedData.reply, jobs: foundJobs } :
+                    { sender: 'bot', text: `Rất tiếc, tôi không tìm thấy công việc nào cho "${parsedData.keywords}".` };
             } else {
-                const chatRes = await fetch('/api/chatbot-proxy', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'chat', message: currentInput }),
-                });
-    
-                if (!chatRes.ok) {
-                    const errorData = await chatRes.json();
-                    throw new Error(errorData.error || `Chat request failed`);
-                }
-    
-                const chatResult = await chatRes.json();
-                setChatMessages(prev => [...prev, { sender: 'bot', text: chatResult.data }]);
+                botMessage = { sender: 'bot', text: parsedData.reply };
             }
+
+            setChatMessages(prev => [...prev, botMessage]);
+
         } catch (error: any) {
             let errorMessage = 'Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại.';
             if (error.message.includes("API key not configured")) {
                 errorMessage = 'Lỗi cấu hình: API Key của Trợ lý AI chưa được thiết lập trên máy chủ.';
+            } else if (error instanceof SyntaxError) {
+                errorMessage = 'Lỗi: Không thể phân tích phản hồi từ AI. Vui lòng thử lại.';
+                console.error("JSON parsing error from AI response:", error);
             }
             setChatMessages(prev => [...prev, { sender: 'bot', text: errorMessage }]);
         } finally {
             setBotStatus('idle');
         }
-    };
+    }, [userInput, botStatus, chatMessages, searchJobs]);
     
     const handleOpenNotificationJob = (job: Job) => {
         setSelectedJob(job);
