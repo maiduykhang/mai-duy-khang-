@@ -1,5 +1,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
+// Initialize AI Client outside the handler to be reused across invocations.
+// This helps optimize "cold starts" for the serverless function.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
 // This function will be deployed as a Vercel Serverless Function.
 // It acts as a secure proxy between the frontend and the Google AI API.
 export default async function handler(req: any, res: any) {
@@ -24,8 +28,7 @@ export default async function handler(req: any, res: any) {
              return res.status(400).json({ error: 'Invalid request body, "type" and "message" are required.' });
         }
 
-        // --- Step 2: Initialize AI Client ---
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        // --- Step 2: AI Client is already initialized outside the handler ---
         let geminiResponseText: string;
 
         // --- Step 3: Handle different request types (Intent Analysis vs. General Chat) ---

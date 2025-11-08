@@ -291,6 +291,37 @@ const initialPrivateChats = safeJSONParse<PrivateChatSession[]>('workhub_private
 const initialApplications = safeJSONParse<Application[]>('workhub_applications', []);
 
 
+// --- MOCK GEOCoding API ---
+// In a real application, this would call an external service like Google Maps Geocoding API.
+// For this simulation, it recognizes specific addresses from mock data to ensure accuracy.
+const geocodeAddress = (address: string): Promise<[number, number] | null> => {
+    return new Promise(resolve => {
+        setTimeout(() => {
+            const normalizedAddress = address.toLowerCase().trim();
+            // Map known addresses to coordinates
+            const knownLocations: { [key: string]: [number, number] } = {
+                '24 tôn thất tùng': [10.7701, 106.6947],
+                '159-161 nguyễn du': [10.7731, 106.6957],
+                '20 an dương vương': [10.7570, 106.6672],
+                '483 sư vạn hạnh': [10.7719, 106.6690],
+                '37 tôn đức thắng': [10.7756, 106.7045],
+                '86-88 cao thắng': [10.7725, 106.6853],
+                '01 bạch đằng': [10.8015, 106.6625],
+                '172 hai bà trưng': [10.7858, 106.6947],
+            };
+
+            const match = Object.keys(knownLocations).find(key => normalizedAddress.includes(key));
+
+            if (match) {
+                resolve(knownLocations[match]);
+            } else {
+                resolve(null); // Address not found/unrecognized
+            }
+        }, 500); // Simulate network delay
+    });
+};
+
+
 // --- HELPER & ICON COMPONENTS ---
 const StarIcon = ({ filled, half = false, className = "w-4 h-4", ...props }: { filled: boolean; half?: boolean; className?: string; [key: string]: any; }) => {
     if (half) {
@@ -739,8 +770,8 @@ const JobDetailModal = ({ job, onClose, handleAddNewReview, showToast, handleSta
     );
 }
 
-const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void, onPost: (jobData: Omit<Job, 'id' | 'rating' | 'reviewCount' | 'reviews' | 'postedDate' | 'isFeatured' | 'companyId'>, isFeatured: boolean) => void, currentUser: CurrentUser }) => {
-    const [formData, setFormData] = useState<any>({ company: "Công ty TNHH ABC", title: "Nhân viên Marketing", logo: "https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg", location: "123 Đường ABC, Quận 1", workLocationGps: [10.7769, 106.7009], salary: "Thoả thuận", benefits: "BHXH, Lương tháng 13", interviewAddress: "456 Đường XYZ, Quận 3", description: "Mô tả công việc...", schedule: "Giờ hành chính", requirements: "Yêu cầu...", industry: "Marketing", employmentType: "Toàn thời gian", recruiterEmail: "hr@abc.com", recruiterHotline: "0123456789", recruiterOfficeLocation: "456 Đường XYZ, Quận 3", recruiterOfficeGpsLink: "https://www.google.com/maps?q=10.7800,106.6900" });
+const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void, onPost: (formData: any, isFeatured: boolean) => void, currentUser: CurrentUser }) => {
+    const [formData, setFormData] = useState<any>({ company: "Công ty TNHH ABC", title: "Nhân viên Marketing", logo: "https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg", location: "123 Đường ABC, Quận 1", salary: "Thoả thuận", benefits: "BHXH, Lương tháng 13", interviewAddress: "456 Đường XYZ, Quận 3", description: "Mô tả công việc...", schedule: "Giờ hành chính", requirements: "Yêu cầu...", industry: "Marketing", employmentType: "Toàn thời gian", recruiterEmail: "hr@abc.com", recruiterHotline: "0123456789" });
     const [logoPreview, setLogoPreview] = useState<string | null>(formData.logo);
     const [formErrors, setFormErrors] = useState<any>({});
     const [postingType, setPostingType] = useState<'standard' | 'featured'>('standard');
@@ -769,32 +800,6 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
         }
     };
 
-    const validateAndParseGpsLink = (link: string): [number, number] | null => {
-        if (!link || (!link.startsWith('http://') && !link.startsWith('https://'))) {
-            return null;
-        }
-        try {
-            const url = new URL(link);
-            const q = url.searchParams.get('q');
-            if (q) {
-                const [lat, lng] = q.split(',').map(Number);
-                if (!isNaN(lat) && !isNaN(lng)) {
-                    return [lat, lng];
-                }
-            }
-            const pathnameParts = url.pathname.split('/@');
-            if (pathnameParts.length > 1) {
-                const [lat, lng] = pathnameParts[1].split(',').slice(0, 2).map(Number);
-                 if (!isNaN(lat) && !isNaN(lng)) {
-                    return [lat, lng];
-                }
-            }
-            return null;
-        } catch (error) {
-            return null;
-        }
-    };
-
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const errors: any = {};
@@ -802,31 +807,15 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
         if (!formData.salary) errors.salary = "Bắt buộc.";
         if (!formData.benefits) errors.benefits = "Bắt buộc.";
         if (!formData.interviewAddress) errors.interviewAddress = "Bắt buộc.";
+        if (!formData.location) errors.location = "Bắt buộc.";
         if (!formData.description) errors.description = "Bắt buộc.";
         if (!formData.schedule) errors.schedule = "Bắt buộc.";
         if (!formData.requirements) errors.requirements = "Bắt buộc.";
         
-        const parsedGps = validateAndParseGpsLink(formData.recruiterOfficeGpsLink);
-        if (!parsedGps) {
-            errors.recruiterOfficeGpsLink = "Link Google Maps không hợp lệ hoặc không chứa tọa độ.";
-        }
-
         setFormErrors(errors);
 
-        if (Object.keys(errors).length === 0 && parsedGps) {
-             onPost({
-                 ...formData,
-                 isVerified: false, // New posts are not verified by default
-                 benefits: formData.benefits.split(',').map((s:string) => s.trim()),
-                 requirements: formData.requirements.split('\n').map((s:string) => s.trim()),
-                 recruiter: {
-                     name: `Phòng nhân sự ${formData.company}`,
-                     email: formData.recruiterEmail,
-                     hotline: formData.recruiterHotline,
-                     officeLocation: formData.recruiterOfficeLocation,
-                     officeGps: parsedGps
-                 },
-             }, postingType === 'featured');
+        if (Object.keys(errors).length === 0) {
+            onPost(formData, postingType === 'featured');
         }
     };
 
@@ -891,8 +880,13 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
                             {formErrors.benefits && <p className="text-red-500 text-xs mt-1">{formErrors.benefits}</p>}
                         </div>
                         <div className="md:col-span-2">
+                            <label htmlFor="location" className="block text-sm font-medium text-gray-800 mb-1">Địa chỉ Nơi làm việc <span className="text-red-500">*</span></label>
+                            <input type="text" name="location" id="location" value={formData.location} onChange={handleChange} className="w-full border-gray-300 rounded-md" required placeholder="Nhập địa chỉ thật cụ thể (số nhà, đường, phường, quận)" />
+                            {formErrors.location && <p className="text-red-500 text-xs mt-1">{formErrors.location}</p>}
+                        </div>
+                        <div className="md:col-span-2">
                             <label htmlFor="interviewAddress" className="block text-sm font-medium text-gray-800 mb-1">Địa chỉ Phỏng vấn <span className="text-red-500">*</span></label>
-                            <input type="text" name="interviewAddress" id="interviewAddress" value={formData.interviewAddress} onChange={handleChange} className="w-full border-gray-300 rounded-md" required />
+                            <input type="text" name="interviewAddress" id="interviewAddress" value={formData.interviewAddress} onChange={handleChange} className="w-full border-gray-300 rounded-md" required placeholder="Nhập địa chỉ thật cụ thể (số nhà, đường, phường, quận)"/>
                             {formErrors.interviewAddress && <p className="text-red-500 text-xs mt-1">{formErrors.interviewAddress}</p>}
                         </div>
                      </div>
@@ -1848,18 +1842,47 @@ const App = () => {
         return true;
     }, [showToast, users, handleNavigate]);
     
-    const handlePostJob = (jobData: any, isFeatured: boolean) => {
+    const handlePostJob = async (formData: any, isFeatured: boolean) => {
         if (!currentUser) return;
 
+        // --- Geocoding Step ---
+        const workGps = await geocodeAddress(formData.location);
+        const interviewGps = await geocodeAddress(formData.interviewAddress);
+
+        if (!workGps || !interviewGps) {
+            showToast("Lỗi: Không thể xác định địa chỉ. Vui lòng nhập địa chỉ cụ thể hơn (số nhà, đường, phường, quận).");
+            return;
+        }
+    
         const newJob: Job = {
-            ...jobData,
+            title: formData.title,
+            company: formData.company,
+            logo: formData.logo,
+            location: formData.location,
+            salary: formData.salary,
+            description: formData.description,
+            schedule: formData.schedule,
+            industry: formData.industry,
+            employmentType: formData.employmentType,
+            interviewAddress: formData.interviewAddress,
+            workLocationGps: workGps,
+            recruiter: {
+                name: `Phòng nhân sự ${formData.company}`,
+                email: formData.recruiterEmail,
+                hotline: formData.recruiterHotline,
+                officeLocation: formData.interviewAddress,
+                officeGps: interviewGps
+            },
+            isVerified: false,
+            benefits: typeof formData.benefits === 'string' ? formData.benefits.split(',').map((s:string) => s.trim()) : [],
+            requirements: typeof formData.requirements === 'string' ? formData.requirements.split('\n').map((s:string) => s.trim()) : [],
             id: Date.now(),
             companyId: currentUser.id,
             rating: 0,
             reviewCount: 0,
             reviews: [],
             postedDate: "Vừa xong",
-            isFeatured: false, // Will be set after payment if applicable
+            isFeatured: false,
         };
 
         if (isFeatured) {
