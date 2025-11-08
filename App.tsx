@@ -316,46 +316,17 @@ const geocodeAddress = (address: string): Promise<[number, number] | null> => {
             if (match) {
                 resolve(knownLocations[match]);
             } else {
-                resolve(null); // Address not found/unrecognized
+                resolve(null); // Address not found/unrecognized (ZERO_RESULTS equivalent)
             }
         }, 500); // Simulate network delay
     });
 };
 
 const normalizeAndGeocodeAddress = (input: string): Promise<[number, number] | null> => {
-    let addressToGeocode = input.trim();
-    try {
-        // Attempt to parse the input as a URL
-        const url = new URL(input);
-        // Handle various Google Maps URL formats
-        if (url.hostname.includes('google.com') || url.hostname.includes('googleusercontent.com')) {
-            const query = url.searchParams.get('q') || url.searchParams.get('query');
-            if (query) {
-                addressToGeocode = query;
-            } else {
-                const pathParts = url.pathname.split('/');
-                const placeIndex = pathParts.indexOf('place');
-                const dataIndex = pathParts.indexOf('data');
-                
-                if (placeIndex !== -1 && pathParts.length > placeIndex + 1) {
-                     // Format: /maps/place/159+Nguyen+Du,+P.+Ben+Thanh,...
-                    addressToGeocode = decodeURIComponent(pathParts[placeIndex + 1].replace(/\+/g, ' '));
-                } else if (dataIndex !== -1 && url.pathname.includes('!3d') && url.pathname.includes('!4d')) {
-                    // Attempt to extract coordinates directly from the data blob in the URL
-                    // e.g. /maps/place/.../data=!4m2!3m1!1s0x...d10.7731!4d106.6957
-                    const latMatch = url.pathname.match(/!3d(-?\d+\.\d+)/);
-                    const lngMatch = url.pathname.match(/!4d(-?\d+\.\d+)/);
-                    if (latMatch && lngMatch && latMatch[1] && lngMatch[1]) {
-                         return Promise.resolve([parseFloat(latMatch[1]), parseFloat(lngMatch[1])]);
-                    }
-                }
-            }
-        }
-    } catch (e) {
-        // Not a valid URL, treat as plain text address. No action needed.
-    }
-    // Fallback to geocoding the extracted/original string
-    return geocodeAddress(addressToGeocode);
+    // Clean the address string before geocoding. This function now assumes text-only input
+    // as URL validation is handled at the form level.
+    const cleanedAddress = input.trim().replace(/,+/g, ',').replace(/\s\s+/g, ' ');
+    return geocodeAddress(cleanedAddress);
 };
 
 
@@ -840,11 +811,24 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const errors: any = {};
+        const urlPattern = /https?:\/\/|google\.com|googleusercontent\.com/i;
+
+        // --- Address Validation ---
+        if (urlPattern.test(formData.location)) {
+            errors.location = 'Vui lòng chỉ nhập địa chỉ đường phố (ví dụ: 159 Nguyễn Du, Phường Bến Thành, Quận 1).';
+        } else if (!formData.location) {
+             errors.location = "Bắt buộc.";
+        }
+        if (urlPattern.test(formData.interviewAddress)) {
+            errors.interviewAddress = 'Vui lòng chỉ nhập địa chỉ đường phố (ví dụ: 159 Nguyễn Du, Phường Bến Thành, Quận 1).';
+        } else if (!formData.interviewAddress) {
+            errors.interviewAddress = "Bắt buộc.";
+        }
+        
+        // --- Other Validations ---
         if (!formData.recruiterEmail) errors.recruiterEmail = "Bắt buộc.";
         if (!formData.salary) errors.salary = "Bắt buộc.";
         if (!formData.benefits) errors.benefits = "Bắt buộc.";
-        if (!formData.interviewAddress) errors.interviewAddress = "Bắt buộc.";
-        if (!formData.location) errors.location = "Bắt buộc.";
         if (!formData.description) errors.description = "Bắt buộc.";
         if (!formData.schedule) errors.schedule = "Bắt buộc.";
         if (!formData.requirements) errors.requirements = "Bắt buộc.";
@@ -918,12 +902,12 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
                         </div>
                         <div className="md:col-span-2">
                             <label htmlFor="location" className="block text-sm font-medium text-gray-800 mb-1">Địa chỉ Nơi làm việc <span className="text-red-500">*</span></label>
-                            <input type="text" name="location" id="location" value={formData.location} onChange={handleChange} className="w-full border-gray-300 rounded-md" required placeholder="Nhập địa chỉ, URL Google Maps..." />
+                            <input type="text" name="location" id="location" value={formData.location} onChange={handleChange} className="w-full border-gray-300 rounded-md" placeholder="VD: 123 Đường ABC, Phường X, Quận Y" />
                             {formErrors.location && <p className="text-red-500 text-xs mt-1">{formErrors.location}</p>}
                         </div>
                         <div className="md:col-span-2">
                             <label htmlFor="interviewAddress" className="block text-sm font-medium text-gray-800 mb-1">Địa chỉ Phỏng vấn <span className="text-red-500">*</span></label>
-                            <input type="text" name="interviewAddress" id="interviewAddress" value={formData.interviewAddress} onChange={handleChange} className="w-full border-gray-300 rounded-md" required placeholder="Nhập địa chỉ, URL Google Maps..."/>
+                            <input type="text" name="interviewAddress" id="interviewAddress" value={formData.interviewAddress} onChange={handleChange} className="w-full border-gray-300 rounded-md" placeholder="VD: 456 Đường XYZ, Phường A, Quận B"/>
                             {formErrors.interviewAddress && <p className="text-red-500 text-xs mt-1">{formErrors.interviewAddress}</p>}
                         </div>
                      </div>
@@ -1882,12 +1866,13 @@ const App = () => {
     const handlePostJob = async (formData: any, isFeatured: boolean) => {
         if (!currentUser) return;
 
-        // --- Geocoding Step with URL normalization ---
+        // --- Geocoding Step with hardened validation ---
         const workGps = await normalizeAndGeocodeAddress(formData.location);
         const interviewGps = await normalizeAndGeocodeAddress(formData.interviewAddress);
 
+        // Strict Geocoding Check: Reject post if geocoding fails for either address
         if (!workGps || !interviewGps) {
-            showToast("Lỗi: Không thể xác định địa chỉ. Vui lòng nhập địa chỉ cụ thể (số nhà, đường, phường, quận) hoặc một URL Google Maps hợp lệ.");
+            showToast("Lỗi: Không thể xác định một hoặc cả hai địa chỉ. Vui lòng nhập địa chỉ thật chính xác (số nhà, đường, phường, quận).");
             return;
         }
     
