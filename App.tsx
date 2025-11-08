@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { GoogleGenAI, Type } from "@google/genai";
 
 // --- TYPES ---
 type Job = {
@@ -1421,15 +1420,9 @@ const EmployerDashboard = ({ currentUser, jobs, payments, privateChats, users, h
 const AdminDashboard = ({ currentUser, handleNavigate, users, jobs, reports, actionLogs, toggleUserLock, deleteJob, showToast, handleOpenEditModal, handleReportAction, handleReviewStatusChange }: { currentUser: CurrentUser, handleNavigate: (view: AppView) => void, users: User[], jobs: Job[], reports: Report[], actionLogs: ActionLog[], toggleUserLock: (userId: number) => void, deleteJob: (jobId: number) => void, showToast: (message: string) => void, handleOpenEditModal: (job: Job) => void, handleReportAction: (reportId: number, action: 'resolve') => void, handleReviewStatusChange: (jobId: number, reviewIndex: number, newStatus: Review['status']) => void }) => {
     const [activeTab, setActiveTab] = useState<'jobs' | 'users' | 'moderation' | 'logs'>('jobs');
     
-    // This is a crucial security check. If a non-admin somehow reaches this component, redirect them.
-    useEffect(() => {
-        if (!currentUser || currentUser.role !== 'admin') {
-            handleNavigate('main');
-        }
-    }, [currentUser, handleNavigate]);
-
     if (!currentUser || currentUser.role !== 'admin') {
-        return null; // Render nothing while redirecting
+        // This check is a fallback. The main guard is in the App component's useEffect.
+        return <div className="text-center p-10">Redirecting...</div>;
     }
     
     const allReviews = useMemo(() => jobs.flatMap(job => job.reviews.map((review, index) => ({ ...review, jobId: job.id, jobTitle: job.title, reviewIndex: index }))), [jobs]);
@@ -1609,7 +1602,6 @@ const App = () => {
     const [userInput, setUserInput] = useState('');
     const [isBotTyping, setIsBotTyping] = useState(false);
     const [isAiReady, setIsAiReady] = useState(false);
-    const ai = useRef<GoogleGenAI | null>(null);
 
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [newJobNotifications, setNewJobNotifications] = useState<Job[]>([]);
@@ -1673,22 +1665,24 @@ const App = () => {
         }
     }, []);
 
+    // Admin Dashboard Security Guard Effect
     useEffect(() => {
-        if (CONFIG.GOOGLE_API_KEY) {
-            try {
-                ai.current = new GoogleGenAI({ apiKey: CONFIG.GOOGLE_API_KEY });
-                setIsAiReady(true);
-                setChatMessages([{ sender: 'bot', text: 'Chào bạn! Tôi là trợ lý AI của WorkHub. Tôi có thể giúp gì cho bạn hôm nay?' }]);
-            } catch (error) {
-                console.error("Failed to initialize Google AI:", error);
-                setIsAiReady(false);
-                setChatMessages([{ sender: 'bot', text: 'Rất tiếc, trợ lý AI hiện không khả dụng do lỗi cấu hình. Vui lòng thử lại sau.' }]);
-            }
-        } else {
-            console.warn("Google API Key is missing.");
-            setIsAiReady(false);
-            setChatMessages([{ sender: 'bot', text: 'Trợ lý AI hiện không khả dụng. Vui lòng đảm bảo API Key đã được cung cấp trong biến môi trường của Vercel.' }]);
+        // This effect acts as a robust route guard, fulfilling the requirement to secure
+        // the admin dashboard based on user role instead of unreliable IP whitelisting.
+        // It runs whenever the view or current user changes, ensuring persistent protection.
+        if (view === 'adminDashboard' && (!currentUser || currentUser.role !== 'admin')) {
+            showToast("Quyền truy cập bị từ chối. Vui lòng đăng nhập với tư cách quản trị viên.");
+            // We use handleNavigate here which will update the view state and trigger a re-render
+            // leading to the correct component being displayed.
+            handleNavigate('adminLogin');
         }
+    }, [view, currentUser, handleNavigate, showToast]);
+
+    useEffect(() => {
+        // The AI logic is now handled by the serverless proxy.
+        // The frontend assumes the backend is ready and handles errors during the fetch.
+        setIsAiReady(true);
+        setChatMessages([{ sender: 'bot', text: 'Chào bạn! Tôi là trợ lý AI của WorkHub. Tôi có thể giúp gì cho bạn hôm nay?' }]);
     }, []);
 
     // FIX FOR VERCEL DEPLOYMENT & DARK MODE: Prevents "document is not defined" error during build
@@ -1907,27 +1901,31 @@ const App = () => {
     }, [showToast]);
 
     const handleSendMessage = async () => {
-        if (!userInput.trim() || !ai.current) return;
+        if (!userInput.trim()) return;
         const newUserMessage: ChatMessage = { sender: 'user', text: userInput };
         setChatMessages(prev => [...prev, newUserMessage]);
         const currentInput = userInput;
         setUserInput('');
         setIsBotTyping(true);
-
+    
         try {
-            // Step 1: Intent Analysis
-            const intentPrompt = `System: You are an intent classification AI for a job board chatbot. Analyze the user's message and determine if they are searching for a job or just having a general conversation. If they are searching for a job, identify the keywords (job title, location, skills). Respond ONLY with a JSON object in the format: For job search: { "intent": "JOB_SEARCH", "keywords": "extracted keywords" } For anything else: { "intent": "GENERAL_CONVERSATION" }\n\nUser message: "${currentInput}"`;
-            
-            const intentResponse = await ai.current.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: intentPrompt,
-                config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { intent: { type: Type.STRING }, keywords: { type: Type.STRING }}}}
+            // Step 1: Intent Analysis via Proxy
+            const intentRes = await fetch('/api/chatbot-proxy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'intent', message: currentInput }),
             });
-
-            const intentData = JSON.parse(intentResponse.text.trim());
-
+    
+            if (!intentRes.ok) {
+                const errorData = await intentRes.json();
+                throw new Error(`Intent analysis failed: ${intentRes.statusText} - ${errorData.details || ''}`);
+            }
+            
+            const intentResult = await intentRes.json();
+            const intentData = JSON.parse(intentResult.data); // Gemini returns a JSON string
+    
             if (intentData.intent === 'JOB_SEARCH' && intentData.keywords) {
-                // Step 2: Perform search and respond with rich cards
+                // Step 2: Perform search locally
                 const foundJobs = searchJobs(intentData.keywords);
                 if (foundJobs.length > 0) {
                     const botMessage: ChatMessage = { sender: 'bot', text: `Tôi đã tìm thấy ${foundJobs.length} công việc phù hợp với tìm kiếm của bạn:`, jobs: foundJobs };
@@ -1937,18 +1935,25 @@ const App = () => {
                     setChatMessages(prev => [...prev, botMessage]);
                 }
             } else {
-                // Step 3: General conversation
-                const chatPrompt = `User question: "${currentInput}"\nAnswer in Vietnamese.`;
-                 const response = await ai.current.models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: chatPrompt,
+                // Step 3: General conversation via Proxy
+                const chatRes = await fetch('/api/chatbot-proxy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'chat', message: currentInput }),
                 });
-                const botMessage: ChatMessage = { sender: 'bot', text: response.text };
+    
+                if (!chatRes.ok) {
+                    const errorData = await chatRes.json();
+                    throw new Error(`Chat request failed: ${chatRes.statusText} - ${errorData.details || ''}`);
+                }
+    
+                const chatResult = await chatRes.json();
+                const botMessage: ChatMessage = { sender: 'bot', text: chatResult.data };
                 setChatMessages(prev => [...prev, botMessage]);
             }
         } catch (error) {
-            console.error("Gemini API error:", error);
-            const errorMessage: ChatMessage = { sender: 'bot', text: 'Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại.' };
+            console.error("Proxy API error:", error);
+            const errorMessage: ChatMessage = { sender: 'bot', text: 'Xin lỗi, đã có lỗi xảy ra khi kết nối với trợ lý AI. Vui lòng thử lại.' };
             setChatMessages(prev => [...prev, errorMessage]);
         } finally {
             setIsBotTyping(false);
@@ -2119,7 +2124,11 @@ const App = () => {
             case 'employerDashboard':
                 return <EmployerDashboard currentUser={currentUser} jobs={jobs} payments={payments} privateChats={privateChats} users={users} handleEditJob={setJobToEdit} handleDeleteJob={deleteJob} openPrivateChat={setActivePrivateChat}/>;
             case 'adminDashboard':
-                return <AdminDashboard currentUser={currentUser} handleNavigate={handleNavigate} users={users} jobs={jobs} reports={reports} actionLogs={actionLogs} toggleUserLock={toggleUserLock} deleteJob={deleteJob} showToast={showToast} handleOpenEditModal={setJobToEdit} handleReportAction={handleReportAction} handleReviewStatusChange={handleReviewStatusChange} />;
+                // The guard effect will handle redirection if the user is not an admin.
+                if (currentUser?.role === 'admin') {
+                     return <AdminDashboard currentUser={currentUser} handleNavigate={handleNavigate} users={users} jobs={jobs} reports={reports} actionLogs={actionLogs} toggleUserLock={toggleUserLock} deleteJob={deleteJob} showToast={showToast} handleOpenEditModal={setJobToEdit} handleReportAction={handleReportAction} handleReviewStatusChange={handleReviewStatusChange} />;
+                }
+                return null; // Render nothing while the guard effect redirects
             case 'main':
             default:
                 return <MainContent filters={filters} handleFilterChange={handleFilterChange} uniqueIndustries={uniqueIndustries} showOnlySaved={showOnlySaved} setShowOnlySaved={setShowOnlySaved} filteredJobs={filteredJobs} setSelectedJob={setSelectedJob} savedJobIds={savedJobIds} toggleSaveJob={toggleSaveJob} />;
