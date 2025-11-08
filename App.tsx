@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 // --- TYPES ---
 type Job = {
@@ -36,6 +35,7 @@ type Job = {
 type ChatMessage = {
   sender: 'user' | 'bot';
   text: string;
+  jobs?: Job[];
 };
 
 type Review = { 
@@ -50,9 +50,9 @@ type User = {
   id: number;
   email: string;
   passwordHash: string; // Simulate hashed password
-  companyName: string;
+  name: string;
   phone: string;
-  role: 'employer' | 'admin';
+  role: 'employer' | 'admin' | 'jobseeker';
   isLocked: boolean;
 };
 
@@ -83,6 +83,27 @@ type ActionLog = {
     timestamp: string;
 };
 
+type PrivateChatMessage = {
+    senderId: number;
+    text: string;
+    timestamp: number;
+};
+
+type PrivateChatSession = {
+    sessionId: string; // e.g., 'jobId-applicantId' -> '2-201'
+    jobId: number;
+    participants: { applicantId: number; employerId: number; };
+    messages: PrivateChatMessage[];
+};
+
+type Application = {
+    id: number;
+    jobId: number;
+    applicantId: number;
+    cvFileUrl: string; // Simulated URL
+    submittedAt: string;
+};
+
 type CurrentUser = Omit<User, 'passwordHash'> | null;
 type AppView = 'main' | 'login' | 'signup' | 'employerDashboard' | 'adminDashboard' | 'adminLogin' | 'forbidden';
 
@@ -92,7 +113,7 @@ type AppView = 'main' | 'login' | 'signup' | 'employerDashboard' | 'adminDashboa
 const CONFIG = {
     GOOGLE_API_KEY: process.env.API_KEY,
     SUPER_ADMIN: {
-        username: 'superadmin@viectot.vn',
+        username: 'superadmin@workhub.vn',
         passwordHash: 'super_secret_pass', // IMPORTANT: Replace with a real, strong hash from your .env file
         mfaSecret: '123456' // IMPORTANT: Replace with a real MFA secret from your .env file
     },
@@ -102,11 +123,12 @@ const CONFIG = {
 
 // --- REALISTIC & ACCURATE MOCK DATA ---
 const initialUsers: User[] = [
-    { id: 1, email: 'tuyendung@7-eleven.vn', passwordHash: 'hashed_password_123', companyName: '7-Eleven', phone: '0901234567', role: 'employer', isLocked: false },
-    { id: 2, email: 'hr@thecoffeehouse.vn', passwordHash: 'hashed_password_123', companyName: 'The Coffee House', phone: '0987654321', role: 'employer', isLocked: false },
-    { id: 3, email: 'recruitment@kfcvietnam.com.vn', passwordHash: 'hashed_password_123', companyName: 'KFC', phone: '0912345678', role: 'employer', isLocked: true },
-    { id: 4, email: 'tuyendung@guardian.com.vn', passwordHash: 'hashed_password_123', companyName: 'Guardian', phone: '0998877665', role: 'employer', isLocked: false },
-    { id: 100, email: 'admin@viectot.vn', passwordHash: 'admin_pass', companyName: 'Việc Tốt Admin', phone: '0111222333', role: 'admin', isLocked: false },
+    { id: 1, email: 'tuyendung@7-eleven.vn', passwordHash: 'hashed_password_123', name: '7-Eleven', phone: '0901234567', role: 'employer', isLocked: false },
+    { id: 2, email: 'hr@thecoffeehouse.vn', passwordHash: 'hashed_password_123', name: 'The Coffee House', phone: '0987654321', role: 'employer', isLocked: false },
+    { id: 3, email: 'recruitment@kfcvietnam.com.vn', passwordHash: 'hashed_password_123', name: 'KFC', phone: '0912345678', role: 'employer', isLocked: true },
+    { id: 4, email: 'tuyendung@guardian.com.vn', passwordHash: 'hashed_password_123', name: 'Guardian', phone: '0998877665', role: 'employer', isLocked: false },
+    { id: 100, email: 'admin@workhub.vn', passwordHash: 'admin_pass', name: 'WorkHub Admin', phone: '0111222333', role: 'admin', isLocked: false },
+    { id: 201, email: 'applicant1@email.com', passwordHash: 'hashed_password_123', name: 'Nguyễn Văn An', phone: '0911111111', role: 'jobseeker', isLocked: false }
 ];
 
 const initialJobs: Job[] = [
@@ -242,6 +264,9 @@ const initialJobs: Job[] = [
 const initialPayments: Payment[] = [
     { id: 'TXN001', userId: 1, date: '2024-07-15', service: 'Tin Nổi Bật', amount: 99000, status: 'Completed' },
     { id: 'TXN002', userId: 2, date: '2024-07-20', service: 'Tin Nổi Bật', amount: 99000, status: 'Completed' },
+    { id: 'TXN003', userId: 1, date: '2024-07-22', service: 'Tin Nổi Bật', amount: 99000, status: 'Completed' },
+    { id: 'TXN004', userId: 4, date: '2024-07-25', service: 'Tin Nổi Bật', amount: 99000, status: 'Completed' },
+    { id: 'TXN005', userId: 2, date: '2024-07-28', service: 'Tin Nổi Bật', amount: 99000, status: 'Pending' },
 ];
 
 // --- HELPER & ICON COMPONENTS ---
@@ -307,9 +332,10 @@ type ChatWidgetProps = {
     isBotTyping: boolean;
     isAiReady: boolean;
     selectedJob: Job | null;
+    handleOpenJobFromChat: (job: Job) => void;
 };
 
-const ChatWidget = ({ isChatOpen, setIsChatOpen, chatMessages, userInput, setUserInput, handleSendMessage, isBotTyping, isAiReady, selectedJob }: ChatWidgetProps) => {
+const ChatWidget = ({ isChatOpen, setIsChatOpen, chatMessages, userInput, setUserInput, handleSendMessage, isBotTyping, isAiReady, selectedJob, handleOpenJobFromChat }: ChatWidgetProps) => {
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -344,7 +370,7 @@ const ChatWidget = ({ isChatOpen, setIsChatOpen, chatMessages, userInput, setUse
             {isChatOpen && (
                  <div className="w-80 h-96 bg-white rounded-lg shadow-xl flex flex-col">
                     <div className="p-3 bg-blue-600 text-white rounded-t-lg">
-                        <h3 className="font-semibold">{selectedJob ? `Chat với NTD: ${selectedJob.company}` : 'Trợ lý AI Việc Tốt'}</h3>
+                        <h3 className="font-semibold">{selectedJob ? `Chat với NTD: ${selectedJob.company}` : 'Trợ lý AI WorkHub'}</h3>
                         <p className="text-xs">Hỏi tôi bất cứ điều gì về việc làm!</p>
                     </div>
                     <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto space-y-3 bg-gray-50">
@@ -352,8 +378,24 @@ const ChatWidget = ({ isChatOpen, setIsChatOpen, chatMessages, userInput, setUse
                             <div className="text-center text-sm text-gray-500">Bắt đầu cuộc trò chuyện...</div>
                         )}
                         {chatMessages.map((msg, i) => (
-                            <div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <p className={`max-w-[80%] p-2 rounded-lg text-sm shadow-sm whitespace-pre-wrap break-words ${msg.sender === 'user' ? 'bg-blue-500 text-white' : 'bg-white text-gray-800'}`}>{msg.text}</p>
+                             <div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                {msg.jobs ? (
+                                    <div className="w-full space-y-2">
+                                        <p className="max-w-[80%] p-2 rounded-lg text-sm shadow-sm whitespace-pre-wrap break-words bg-white text-gray-800 mb-2">{msg.text}</p>
+                                        {msg.jobs.map(job => (
+                                            <div key={job.id} className="bg-white rounded-lg p-2 shadow-sm border w-full text-left flex items-start space-x-3">
+                                                <img src={job.logo} alt={job.company} className="w-10 h-10 object-contain rounded-md border p-1 bg-white mt-1"/>
+                                                <div className="flex-1">
+                                                    <p className="font-bold text-sm text-gray-800">{job.title}</p>
+                                                    <p className="text-xs text-gray-600">{job.company}</p>
+                                                    <button onClick={() => handleOpenJobFromChat(job)} className="mt-1 text-xs text-blue-600 font-semibold hover:underline">Xem chi tiết &rarr;</button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className={`max-w-[80%] p-2 rounded-lg text-sm shadow-sm whitespace-pre-wrap break-words ${msg.sender === 'user' ? 'bg-blue-500 text-white' : 'bg-white text-gray-800'}`}>{msg.text}</p>
+                                )}
                             </div>
                         ))}
                         {isBotTyping && <div className="flex justify-start"><p className="p-2 rounded-lg text-sm bg-white text-gray-800 shadow-sm">...</p></div>}
@@ -391,18 +433,18 @@ const ChatWidget = ({ isChatOpen, setIsChatOpen, chatMessages, userInput, setUse
 const Header = ({ currentUser, setView, handleLogout, notificationRef, handleToggleNotifications, isNotificationOpen, newJobNotifications, handleOpenNotificationJob, setIsPostingModalOpen }: { currentUser: CurrentUser, setView: React.Dispatch<React.SetStateAction<AppView>>, handleLogout: () => void, notificationRef: React.RefObject<HTMLDivElement>, handleToggleNotifications: () => void, isNotificationOpen: boolean, newJobNotifications: Job[], handleOpenNotificationJob: (job: Job) => void, setIsPostingModalOpen: React.Dispatch<React.SetStateAction<boolean>> }) => (
     <header className="bg-white shadow-md sticky top-0 z-20">
         <nav className="container mx-auto px-6 py-3 flex justify-between items-center">
-            <div onClick={() => setView('main')} className="text-2xl font-bold text-blue-600 cursor-pointer">Việc Tốt</div>
+            <div onClick={() => setView('main')} className="text-2xl font-bold text-blue-600 cursor-pointer">WorkHub</div>
             <div className="flex items-center space-x-4">
                 {currentUser ? (
                     <>
-                         <span className="text-sm text-gray-600 hidden md:block">Chào, {currentUser.companyName}</span>
-                         <button onClick={() => setView(currentUser.role === 'admin' ? 'adminDashboard' : 'employerDashboard')} className="text-gray-600 hover:text-blue-600 text-sm font-semibold">Dashboard</button>
+                         <span className="text-sm text-gray-600 hidden md:block">Chào, {currentUser.name}</span>
+                         {currentUser.role !== 'jobseeker' && <button onClick={() => setView(currentUser.role === 'admin' ? 'adminDashboard' : 'employerDashboard')} className="text-gray-600 hover:text-blue-600 text-sm font-semibold">Dashboard</button>}
                          <button onClick={handleLogout} className="text-gray-600 hover:text-blue-600 text-sm font-semibold">Đăng xuất</button>
                     </>
                 ) : (
                     <>
                         <button onClick={() => setView('login')} className="text-gray-600 hover:text-blue-600 text-sm font-semibold">Đăng nhập</button>
-                        <button onClick={() => setView('signup')} className="hidden md:block bg-gray-100 text-blue-600 px-4 py-2 rounded-md hover:bg-gray-200 text-sm font-semibold">Đăng ký NTD</button>
+                        <button onClick={() => setView('signup')} className="hidden md:block bg-gray-100 text-blue-600 px-4 py-2 rounded-md hover:bg-gray-200 text-sm font-semibold">Đăng ký</button>
                     </>
                 )}
                 <div ref={notificationRef} className="relative">
@@ -427,7 +469,7 @@ const Header = ({ currentUser, setView, handleLogout, notificationRef, handleTog
                         </div>
                     )}
                 </div>
-                <button onClick={() => currentUser ? setIsPostingModalOpen(true) : setView('login') } className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-semibold">Đăng tin</button>
+                {currentUser?.role === 'employer' && <button onClick={() => setIsPostingModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-semibold">Đăng tin</button>}
             </div>
         </nav>
     </header>
@@ -477,7 +519,87 @@ const ReportJobModal = ({ job, onClose, onSubmit, showToast }: { job: Job, onClo
     );
 };
 
-const JobDetailModal = ({ job, onClose, handleAddNewReview, showToast, setIsChatOpen, handleOpenReportModal, googleApiKey }: { job: Job, onClose: () => void, handleAddNewReview: (jobId: number, review: Omit<Review, 'status'>) => void, showToast: (message: string) => void, setIsChatOpen: React.Dispatch<React.SetStateAction<boolean>>, handleOpenReportModal: (job: Job) => void, googleApiKey: string | undefined }) => {
+const CvSubmissionForm = ({ job, currentUser, applications, onSubmit, showToast }: { job: Job, currentUser: CurrentUser, applications: Application[], onSubmit: (job: Job, file: File) => void, showToast: (message: string) => void }) => {
+    const [file, setFile] = useState<File | null>(null);
+    const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const hasApplied = useMemo(() => applications.some(app => app.jobId === job.id && app.applicantId === currentUser?.id), [applications, job.id, currentUser]);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFile = e.target.files?.[0];
+        if (selectedFile) {
+            if (selectedFile.size > 5 * 1024 * 1024) { // 5MB limit
+                setError('Kích thước file không được vượt quá 5MB.');
+                setFile(null);
+                return;
+            }
+            if (!['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(selectedFile.type)) {
+                setError('Chỉ chấp nhận file .pdf hoặc .docx.');
+                setFile(null);
+                return;
+            }
+            setError('');
+            setFile(selectedFile);
+        }
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (isLoading) return;
+
+        if (file) {
+            setIsLoading(true);
+            onSubmit(job, file);
+        } else {
+            setError('Vui lòng chọn một file CV.');
+        }
+    };
+
+    if (hasApplied) {
+        return (
+            <div className="mt-4 text-center p-4 bg-green-100 text-green-800 rounded-lg">
+                <p className="font-semibold">Bạn đã ứng tuyển vào vị trí này.</p>
+                <p className="text-sm">Nhà tuyển dụng sẽ sớm liên hệ với bạn.</p>
+            </div>
+        )
+    }
+
+    return (
+        <form onSubmit={handleSubmit} className="mt-4 p-4 border-t-2 border-dashed border-gray-200 space-y-3">
+            <h4 className="text-md font-bold text-gray-900">Ứng tuyển ngay</h4>
+            <button type="button" onClick={() => showToast("Chức năng đang được phát triển")} className="w-full text-sm text-center py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Sử dụng CV online WorkHub</button>
+
+            <div className="relative text-center">
+                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-300"></div></div>
+                <div className="relative flex justify-center text-sm"><span className="px-2 bg-slate-50 text-gray-500">hoặc</span></div>
+            </div>
+
+            <div>
+                <label htmlFor="cv-upload" className="block text-sm font-medium text-gray-700 mb-1">Tải lên CV từ máy tính</label>
+                <input id="cv-upload" type="file" onChange={handleFileChange} accept=".pdf,.docx" className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                {file && <p className="text-xs text-gray-600 mt-1">Đã chọn: {file.name}</p>}
+                {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
+            </div>
+
+            <button type="submit" disabled={isLoading} className="w-full bg-green-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-green-700 disabled:bg-green-400 flex justify-center items-center">
+                {isLoading ? (
+                    <>
+                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Đang nộp đơn...</span>
+                    </>
+                ) : (
+                    'Nộp CV cho Nhà tuyển dụng'
+                )}
+            </button>
+        </form>
+    );
+};
+
+
+const JobDetailModal = ({ job, onClose, handleAddNewReview, showToast, handleStartPrivateChat, handleOpenReportModal, googleApiKey, currentUser, applications, handleCvSubmit }: { job: Job, onClose: () => void, handleAddNewReview: (jobId: number, review: Omit<Review, 'status'>) => void, showToast: (message: string) => void, handleStartPrivateChat: (job: Job) => void, handleOpenReportModal: (job: Job) => void, googleApiKey: string | undefined, currentUser: CurrentUser, applications: Application[], handleCvSubmit: (job: Job, file: File) => void }) => {
     const [showInterviewMap, setShowInterviewMap] = useState(false);
     const newReviewRef = useRef<{ rating: number, comment: string }>({ rating: 0, comment: '' });
     const [hoverRating, setHoverRating] = useState(0);
@@ -580,8 +702,11 @@ const JobDetailModal = ({ job, onClose, handleAddNewReview, showToast, setIsChat
                             </div>
                         </div>
                         <div>
-                            {job.isVerified && <div className="flex items-center text-sm p-2 bg-green-100 text-green-800 font-medium rounded-md mb-3"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg> Nhà tuyển dụng đã xác minh</div>}
-                            <button onClick={() => setIsChatOpen(true)} className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm hover:bg-blue-700 flex items-center justify-center space-x-2"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg><span>Chat với Nhà tuyển dụng</span></button>
+                             {currentUser?.role === 'jobseeker' && (
+                                <CvSubmissionForm job={job} currentUser={currentUser} applications={applications} onSubmit={handleCvSubmit} showToast={showToast} />
+                            )}
+                            {job.isVerified && <div className="flex items-center text-sm p-2 bg-green-100 text-green-800 font-medium rounded-md mb-3 mt-4"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg> Nhà tuyển dụng đã xác minh</div>}
+                            <button onClick={() => handleStartPrivateChat(job)} className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm hover:bg-blue-700 flex items-center justify-center space-x-2"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg><span>Chat với Nhà tuyển dụng</span></button>
                             <button onClick={() => handleOpenReportModal(job)} className="w-full bg-red-100 text-red-700 py-2 rounded-lg text-sm hover:bg-red-200 flex items-center justify-center space-x-2 mt-2"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 01-1-1V6z" clipRule="evenodd" /></svg><span>Báo cáo tin đăng</span></button>
                         </div>
                     </div>
@@ -601,7 +726,7 @@ const JobPostingModal = ({ onClose, onPost, currentUser }: { onClose: () => void
         if (currentUser) {
             setFormData(prev => ({
                 ...prev,
-                company: currentUser.companyName,
+                company: currentUser.name,
                 recruiterEmail: currentUser.email,
                 recruiterHotline: currentUser.phone,
             }));
@@ -774,7 +899,7 @@ const PaymentModal = ({ jobData, onClose, onSuccess, showToast }: { jobData: any
     const [paymentMethod, setPaymentMethod] = useState<'vnpay' | 'transfer'>('vnpay');
     const [isProcessing, setIsProcessing] = useState(false); // For VNPAY redirect simulation
     const [isWaitingForTransfer, setIsWaitingForTransfer] = useState(false); // For transfer confirmation simulation
-    const transferContent = useMemo(() => `VT ${Date.now()}`, []);
+    const transferContent = useMemo(() => `WH ${Date.now()}`, []);
     
     const handleCopy = (text: string) => {
         navigator.clipboard.writeText(text);
@@ -1014,13 +1139,24 @@ const MainContent = ({ filters, handleFilterChange, uniqueIndustries, showOnlySa
     </main>
 );
 
-const AuthPage = ({ children, title }: {children: React.ReactNode, title: string}) => (
-  <main className="container mx-auto p-6 flex justify-center">
-    <div className="w-full max-w-md bg-white rounded-lg shadow-md p-8 mt-10">
-      <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">{title}</h1>
-      {children}
-    </div>
-  </main>
+const AuthPage = ({ children, title, onBack }: { children: React.ReactNode, title: string, onBack?: () => void }) => (
+    <main className="container mx-auto p-6 flex justify-center">
+        <div className="w-full max-w-md bg-white rounded-lg shadow-md mt-10 overflow-hidden">
+            <div className="p-6 border-b border-gray-200">
+                 <div className="flex items-center justify-center relative">
+                    {onBack && (
+                        <button onClick={onBack} className="absolute left-0 text-gray-500 hover:text-gray-800 p-2 rounded-full" aria-label="Quay lại">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                        </button>
+                    )}
+                    <h1 className="text-2xl font-bold text-center text-gray-800">{title}</h1>
+                </div>
+            </div>
+            <div className="p-8">
+                 {children}
+            </div>
+        </div>
+    </main>
 );
 
 const LoginPage = ({ handleLogin, showToast, setView, users }: { handleLogin: (email: string, pass: string) => boolean, showToast: (message: string) => void, setView: (view: AppView) => void, users: User[] }) => {
@@ -1033,8 +1169,6 @@ const LoginPage = ({ handleLogin, showToast, setView, users }: { handleLogin: (e
   };
 
   const handleFacebookLogin = () => {
-    // Simulate FB login. In a real app, this would trigger the FB SDK.
-    // It automatically finds an existing user or prompts to create one.
     const fbUser = users.find(u => u.email === 'hr@thecoffeehouse.vn');
     if (fbUser) {
         handleLogin(fbUser.email, 'hashed_password_123');
@@ -1045,10 +1179,10 @@ const LoginPage = ({ handleLogin, showToast, setView, users }: { handleLogin: (e
   };
 
   return (
-      <AuthPage title="Đăng nhập tài khoản NTD">
+      <AuthPage title="Đăng nhập" onBack={() => setView('main')}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Email công ty</label>
+            <label className="block text-sm font-medium text-gray-700">Email</label>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="mt-1 w-full border-gray-300 rounded-md shadow-sm" />
           </div>
           <div>
@@ -1081,7 +1215,7 @@ const LoginPage = ({ handleLogin, showToast, setView, users }: { handleLogin: (e
 };
 
 const SignupPage = ({ handleSignup, setView, showToast }: { handleSignup: (data: any) => boolean, setView: (view: AppView) => void, showToast: (message: string) => void }) => {
-    const [formData, setFormData] = useState({ email: '', password: '', confirmPassword: '', companyName: '', phone: '' });
+    const [formData, setFormData] = useState({ email: '', password: '', confirmPassword: '', name: '', phone: '', role: 'jobseeker' });
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -1093,17 +1227,22 @@ const SignupPage = ({ handleSignup, setView, showToast }: { handleSignup: (data:
         handleSignup(signupData);
     };
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    const handleRoleChange = (role: 'jobseeker' | 'employer') => setFormData(prev => ({ ...prev, role }));
 
     return (
-         <AuthPage title="Đăng ký tài khoản Nhà tuyển dụng">
+         <AuthPage title="Đăng ký tài khoản" onBack={() => setView('main')}>
+            <div className="grid grid-cols-2 gap-2 rounded-md p-1 bg-gray-100 mb-6">
+                <button type="button" onClick={() => handleRoleChange('jobseeker')} className={`px-4 py-1.5 text-sm font-semibold rounded ${formData.role === 'jobseeker' ? 'bg-white shadow' : 'text-gray-600'}`}>Người tìm việc</button>
+                <button type="button" onClick={() => handleRoleChange('employer')} className={`px-4 py-1.5 text-sm font-semibold rounded ${formData.role === 'employer' ? 'bg-white shadow' : 'text-gray-600'}`}>Nhà tuyển dụng</button>
+            </div>
           <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Email công ty</label>
+                <label className="block text-sm font-medium text-gray-700">Email</label>
                 <input type="email" name="email" onChange={handleChange} required className="mt-1 w-full border-gray-300 rounded-md shadow-sm" />
               </div>
                <div>
-                <label className="block text-sm font-medium text-gray-700">Tên công ty</label>
-                <input type="text" name="companyName" onChange={handleChange} required className="mt-1 w-full border-gray-300 rounded-md shadow-sm" />
+                <label className="block text-sm font-medium text-gray-700">{formData.role === 'employer' ? 'Tên công ty' : 'Họ và tên'}</label>
+                <input type="text" name="name" onChange={handleChange} required className="mt-1 w-full border-gray-300 rounded-md shadow-sm" />
               </div>
                <div>
                 <label className="block text-sm font-medium text-gray-700">Số điện thoại liên hệ</label>
@@ -1126,34 +1265,36 @@ const SignupPage = ({ handleSignup, setView, showToast }: { handleSignup: (data:
     );
 };
 
-const EmployerDashboard = ({ currentUser, jobs, payments, handleEditJob, handleDeleteJob }: { currentUser: CurrentUser, jobs: Job[], payments: Payment[], handleEditJob: (job: Job) => void, handleDeleteJob: (jobId: number) => void }) => {
-  const [activeTab, setActiveTab] = useState<'jobs' | 'payments'>('jobs');
+const EmployerDashboard = ({ currentUser, jobs, payments, privateChats, users, handleEditJob, handleDeleteJob, openPrivateChat }: { currentUser: CurrentUser, jobs: Job[], payments: Payment[], privateChats: PrivateChatSession[], users: User[], handleEditJob: (job: Job) => void, handleDeleteJob: (jobId: number) => void, openPrivateChat: (sessionId: string) => void }) => {
+  const [activeTab, setActiveTab] = useState<'jobs' | 'payments' | 'inbox'>('jobs');
   if (!currentUser) return null;
 
   const myJobs = jobs.filter(job => job.companyId === currentUser.id);
   const myPayments = payments.filter(p => p.userId === currentUser.id);
+  const myChats = privateChats.filter(chat => chat.participants.employerId === currentUser.id);
 
   return (
     <main className="container mx-auto p-6">
         <h1 className="text-3xl font-bold text-gray-800 mb-2">Employer Dashboard</h1>
         <p className="text-gray-600 mb-6">Quản lý tin đăng và xem lịch sử thanh toán của bạn.</p>
         <div className="flex border-b mb-6">
-            <button onClick={() => setActiveTab('jobs')} className={`px-4 py-2 text-sm font-semibold ${activeTab === 'jobs' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}>Quản lý tin đăng</button>
-            <button onClick={() => setActiveTab('payments')} className={`px-4 py-2 text-sm font-semibold ${activeTab === 'payments' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}>Lịch sử thanh toán</button>
+            <button onClick={() => setActiveTab('jobs')} className={`px-4 py-2 text-sm font-semibold ${activeTab === 'jobs' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-700'}`}>Quản lý tin đăng</button>
+            <button onClick={() => setActiveTab('payments')} className={`px-4 py-2 text-sm font-semibold ${activeTab === 'payments' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-700'}`}>Lịch sử thanh toán</button>
+            <button onClick={() => setActiveTab('inbox')} className={`px-4 py-2 text-sm font-semibold ${activeTab === 'inbox' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-700'}`}>Hộp thư</button>
         </div>
         {activeTab === 'jobs' && (
             <div className="bg-white p-4 rounded-lg shadow-md">
-                <h2 className="text-xl font-semibold mb-4">Tin đăng của bạn ({myJobs.length})</h2>
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Tin đăng của bạn ({myJobs.length})</h2>
                 <div className="space-y-3">
                     {myJobs.map(job => (
                         <div key={job.id} className="border p-4 rounded-lg flex justify-between items-center">
                             <div>
-                                <p className="font-bold">{job.title} {job.isFeatured && <span className="text-xs font-bold bg-yellow-400 text-yellow-900 px-2 py-1 rounded-full ml-2">ƯU TIÊN</span>}</p>
-                                <p className="text-sm text-gray-500">{job.location} - Đăng ngày: {job.postedDate}</p>
+                                <p className="font-bold text-gray-900">{job.title} {job.isFeatured && <span className="text-xs font-bold bg-yellow-400 text-yellow-900 px-2 py-1 rounded-full ml-2">ƯU TIÊN</span>}</p>
+                                <p className="text-sm text-gray-600">{job.location} - Đăng ngày: {job.postedDate}</p>
                             </div>
                             <div className="space-x-2">
-                                <button onClick={() => handleEditJob(job)} className="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">Sửa</button>
-                                <button onClick={() => handleDeleteJob(job.id)} className="text-sm bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200">Xóa</button>
+                                <button onClick={() => handleEditJob(job)} className="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">Sửa</button>
+                                <button onClick={() => handleDeleteJob(job.id)} className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700">Xóa</button>
                             </div>
                         </div>
                     ))}
@@ -1162,30 +1303,59 @@ const EmployerDashboard = ({ currentUser, jobs, payments, handleEditJob, handleD
         )}
          {activeTab === 'payments' && (
              <div className="bg-white p-4 rounded-lg shadow-md">
-                <h2 className="text-xl font-semibold mb-4">Lịch sử giao dịch</h2>
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th className="p-2">Mã GD</th>
-                            <th className="p-2">Ngày</th>
-                            <th className="p-2">Dịch vụ</th>
-                            <th className="p-2">Số tiền</th>
-                            <th className="p-2">Trạng thái</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {myPayments.map(p => (
-                            <tr key={p.id} className="border-b">
-                                <td className="p-2">{p.id}</td>
-                                <td className="p-2">{p.date}</td>
-                                <td className="p-2">{p.service}</td>
-                                <td className="p-2">{p.amount.toLocaleString('vi-VN')}đ</td>
-                                <td className="p-2"><span className={`px-2 py-1 rounded-full text-xs ${p.status === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{p.status}</span></td>
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Lịch sử giao dịch</h2>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-gray-100 text-gray-600 uppercase text-xs">
+                            <tr>
+                                <th className="p-3 font-semibold tracking-wider">Mã GD</th>
+                                <th className="p-3 font-semibold tracking-wider">Ngày</th>
+                                <th className="p-3 font-semibold tracking-wider">Dịch vụ</th>
+                                <th className="p-3 font-semibold tracking-wider text-right">Số tiền</th>
+                                <th className="p-3 font-semibold tracking-wider text-center">Trạng thái</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="text-gray-700">
+                            {myPayments.map(p => (
+                                <tr key={p.id} className="border-b border-gray-200 hover:bg-gray-50">
+                                    <td className="p-3 font-mono text-gray-800 font-medium">{p.id}</td>
+                                    <td className="p-3">{p.date}</td>
+                                    <td className="p-3">{p.service}</td>
+                                    <td className="p-3 text-right font-semibold text-gray-900">{p.amount.toLocaleString('vi-VN')}đ</td>
+                                    <td className="p-3 text-center">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${p.status === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{p.status}</span>
+                                    </td>
+                                </tr>
+                            ))}
+                             {myPayments.length === 0 && (
+                                <tr>
+                                    <td colSpan={5} className="text-center p-4 text-gray-500">Chưa có giao dịch nào.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
              </div>
+        )}
+        {activeTab === 'inbox' && (
+             <div className="bg-white p-4 rounded-lg shadow-md">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Hộp thư ({myChats.length})</h2>
+                <div className="space-y-3">
+                    {myChats.length > 0 ? myChats.map(chat => {
+                        const applicant = users.find(u => u.id === chat.participants.applicantId);
+                        const job = jobs.find(j => j.id === chat.jobId);
+                        return (
+                            <div key={chat.sessionId} onClick={() => openPrivateChat(chat.sessionId)} className="border p-4 rounded-lg flex justify-between items-center cursor-pointer hover:bg-gray-50">
+                                <div>
+                                    <p className="font-bold">Chat với {applicant?.name || 'Không rõ'}</p>
+                                    <p className="text-sm text-gray-500">Về tin đăng: {job?.title || 'Không rõ'}</p>
+                                </div>
+                                <button className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200">Xem tin nhắn</button>
+                            </div>
+                        );
+                    }) : <p className="text-gray-500">Bạn chưa có cuộc hội thoại nào.</p>}
+                </div>
+            </div>
         )}
     </main>
   );
@@ -1242,10 +1412,10 @@ const AdminDashboard = ({ currentUser, setView, users, jobs, reports, actionLogs
                 <div className="bg-white p-4 rounded-lg shadow-md overflow-x-auto">
                      <h2 className="text-xl font-semibold mb-4">Tất cả người dùng ({users.length})</h2>
                      <table className="w-full text-sm text-left whitespace-nowrap">
-                       <thead className="bg-gray-50 text-gray-800 font-bold"><tr><th className="p-2">Công ty</th><th className="p-2">Email</th><th className="p-2">Vai trò</th><th className="p-2">Trạng thái</th><th className="p-2">Hành động</th></tr></thead>
+                       <thead className="bg-gray-50 text-gray-800 font-bold"><tr><th className="p-2">Tên</th><th className="p-2">Email</th><th className="p-2">Vai trò</th><th className="p-2">Trạng thái</th><th className="p-2">Hành động</th></tr></thead>
                        <tbody>
                            {users.map(user => (
-                               <tr key={user.id} className="border-b text-gray-900"><td className="p-2 font-semibold">{user.companyName}</td><td className="p-2">{user.email}</td><td className="p-2">{user.role}</td><td className="p-2"><span className={`px-2 py-1 rounded-full text-xs ${!user.isLocked ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{!user.isLocked ? 'Hoạt động' : 'Đã khóa'}</span></td><td className="p-2 space-x-2"><button className="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">Xem thanh toán</button><button onClick={() => toggleUserLock(user.id)} className={`text-sm px-3 py-1 rounded ${user.isLocked ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-red-600 text-white hover:bg-red-700'}`}>{user.isLocked ? 'Mở khóa' : 'Khóa TK'}</button></td></tr>
+                               <tr key={user.id} className="border-b text-gray-900"><td className="p-2 font-semibold">{user.name}</td><td className="p-2">{user.email}</td><td className="p-2">{user.role}</td><td className="p-2"><span className={`px-2 py-1 rounded-full text-xs ${!user.isLocked ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{!user.isLocked ? 'Hoạt động' : 'Đã khóa'}</span></td><td className="p-2 space-x-2"><button className="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">Xem chi tiết</button><button onClick={() => toggleUserLock(user.id)} className={`text-sm px-3 py-1 rounded ${user.isLocked ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-red-600 text-white hover:bg-red-700'}`}>{user.isLocked ? 'Mở khóa' : 'Khóa TK'}</button></td></tr>
                            ))}
                        </tbody>
                     </table>
@@ -1320,6 +1490,49 @@ const ForbiddenPage = ({ onSimulateTrustedIp }: { onSimulateTrustedIp: () => voi
     </main>
 );
 
+const PrivateChatModal = ({ session, currentUser, users, job, onClose, onSendMessage }: { session: PrivateChatSession, currentUser: CurrentUser, users: User[], job: Job | undefined, onClose: () => void, onSendMessage: (sessionId: string, text: string) => void }) => {
+    const [message, setMessage] = useState('');
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    if (!currentUser) return null;
+
+    const otherUserId = currentUser.id === session.participants.applicantId ? session.participants.employerId : session.participants.applicantId;
+    const otherUser = users.find(u => u.id === otherUserId);
+
+    const handleSend = () => {
+        if (message.trim()) {
+            onSendMessage(session.sessionId, message);
+            setMessage('');
+        }
+    };
+    
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [session.messages]);
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50" onClick={onClose}>
+            <div className="bg-white rounded-lg shadow-xl w-[95%] max-w-lg h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="p-4 border-b">
+                    <h2 className="font-bold text-gray-800">Chat với {otherUser?.name || 'Không rõ'}</h2>
+                    <p className="text-sm text-gray-500">Về tin tuyển dụng: {job?.title || 'Không rõ'}</p>
+                </div>
+                <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-gray-50">
+                    {session.messages.map((msg, i) => (
+                        <div key={i} className={`flex ${msg.senderId === currentUser.id ? 'justify-end' : 'justify-start'}`}>
+                            <p className={`max-w-[80%] p-2 rounded-lg text-sm shadow-sm whitespace-pre-wrap break-words ${msg.senderId === currentUser.id ? 'bg-blue-500 text-white' : 'bg-white text-gray-800'}`}>{msg.text}</p>
+                        </div>
+                    ))}
+                    <div ref={messagesEndRef} />
+                </div>
+                <div className="p-2 border-t flex items-center">
+                    <input value={message} onChange={e => setMessage(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()} placeholder="Nhập tin nhắn..." className="flex-1 border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    <button onClick={handleSend} className="ml-2 bg-blue-500 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-600">Gửi</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- MAIN APP COMPONENT ---
 const App = () => {
     // --- STATE MANAGEMENT ---
@@ -1328,6 +1541,9 @@ const App = () => {
     const [payments, setPayments] = useState<Payment[]>(initialPayments);
     const [reports, setReports] = useState<Report[]>([]);
     const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
+    const [privateChats, setPrivateChats] = useState<PrivateChatSession[]>([]);
+    const [applications, setApplications] = useState<Application[]>([]);
+
 
     const [view, setView] = useState<AppView>('main');
     const [currentUser, setCurrentUser] = useState<CurrentUser>(null);
@@ -1337,6 +1553,7 @@ const App = () => {
     const [jobToReport, setJobToReport] = useState<Job | null>(null);
     const [isPostingModalOpen, setIsPostingModalOpen] = useState(false);
     const [jobDataForPayment, setJobDataForPayment] = useState<any>(null);
+    const [activePrivateChat, setActivePrivateChat] = useState<string | null>(null);
 
     const [filters, setFilters] = useState({ keyword: '', industry: '', salary: '' });
     const [showOnlySaved, setShowOnlySaved] = useState(false);
@@ -1369,7 +1586,7 @@ const App = () => {
         const newLog: ActionLog = {
             id: Date.now(),
             adminId: currentUser.id,
-            adminName: currentUser.companyName,
+            adminName: currentUser.name,
             action: action,
             ipAddress: '127.0.0.1', // Simulated IP
             timestamp: new Date().toLocaleString('vi-VN')
@@ -1378,12 +1595,32 @@ const App = () => {
     }, [currentUser]);
 
     // --- EFFECTS ---
+    // Session Persistence Effect
+    useEffect(() => {
+        try {
+            const savedSession = localStorage.getItem('workhub-session');
+            if (savedSession) {
+                const user: CurrentUser = JSON.parse(savedSession);
+                 // A quick check to ensure the user from storage is valid
+                const userExistsInDb = initialUsers.some(dbUser => dbUser.id === user?.id);
+                if (user && userExistsInDb) {
+                    setCurrentUser(user);
+                } else {
+                     localStorage.removeItem('workhub-session');
+                }
+            }
+        } catch (error) {
+            console.error("Failed to parse user session from localStorage", error);
+            localStorage.removeItem('workhub-session');
+        }
+    }, []);
+
     useEffect(() => {
         if (CONFIG.GOOGLE_API_KEY) {
             try {
                 ai.current = new GoogleGenAI({ apiKey: CONFIG.GOOGLE_API_KEY });
                 setIsAiReady(true);
-                setChatMessages([{ sender: 'bot', text: 'Chào bạn! Tôi là trợ lý AI của Việc Tốt. Tôi có thể giúp gì cho bạn hôm nay?' }]);
+                setChatMessages([{ sender: 'bot', text: 'Chào bạn! Tôi là trợ lý AI của WorkHub. Tôi có thể giúp gì cho bạn hôm nay?' }]);
             } catch (error) {
                 console.error("Failed to initialize Google AI:", error);
                 setIsAiReady(false);
@@ -1393,12 +1630,28 @@ const App = () => {
         }
     }, []);
 
-    // FIX FOR VERCEL DEPLOYMENT: Prevents "document is not defined" error during build.
+    // FIX FOR VERCEL DEPLOYMENT & DARK MODE: Prevents "document is not defined" error during build
+    // and fixes input field visibility on mobile dark mode.
     useEffect(() => {
         const style = document.createElement('style');
         style.innerHTML = `
           .prose {
             max-width: 100% !important;
+          }
+          /* Dark Mode Input Field Fix for Mobile OS Override */
+          @media (prefers-color-scheme: dark) {
+            input[type="text"],
+            input[type="email"],
+            input[type="tel"],
+            input[type="password"],
+            textarea,
+            select {
+              background-color: #1a1a1a !important;
+              color: #ffffff !important;
+              -webkit-appearance: none !important;
+              -webkit-text-fill-color: #ffffff !important;
+              border: 1px solid #444444 !important;
+            }
           }
         `;
         document.head.appendChild(style);
@@ -1456,6 +1709,18 @@ const App = () => {
             return keywordMatch && industryMatch && salaryMatch;
         }).sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
     }, [jobs, filters, showOnlySaved, savedJobIds]);
+    
+    const searchJobs = (keywords: string): Job[] => {
+        if (!keywords) return [];
+        const searchTerms = keywords.toLowerCase().split(' ');
+        return jobs
+            .filter(job => {
+                const jobText = `${job.title} ${job.company} ${job.location} ${job.description}`.toLowerCase();
+                return searchTerms.every(term => jobText.includes(term));
+            })
+            .sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0)) // Prioritize featured jobs
+            .slice(0, 3);
+    };
 
     // --- HANDLERS ---
     const handleFilterChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -1478,16 +1743,18 @@ const App = () => {
     }, [showToast]);
 
     const handleLogin = useCallback((email: string, pass: string): boolean => {
-        // Simplified auth for mock data
         const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
         if (user && (user.passwordHash === 'hashed_password_123' || user.passwordHash === 'admin_pass')) {
              if (user.isLocked) {
                 showToast("Tài khoản của bạn đã bị khóa.");
                 return false;
             }
-            setCurrentUser(user);
+            const userToStore = { ...user };
+            delete (userToStore as any).passwordHash;
+            setCurrentUser(userToStore);
+            localStorage.setItem('workhub-session', JSON.stringify(userToStore));
             setView(user.role === 'admin' ? 'adminDashboard' : 'main');
-            showToast(`Chào mừng ${user.companyName}!`);
+            showToast(`Chào mừng ${user.name}!`);
             return true;
         }
         showToast("Email hoặc mật khẩu không chính xác.");
@@ -1496,6 +1763,7 @@ const App = () => {
 
     const handleLogout = useCallback(() => {
         setCurrentUser(null);
+        localStorage.removeItem('workhub-session');
         setView('main');
         showToast("Bạn đã đăng xuất.");
     }, [showToast]);
@@ -1509,9 +1777,9 @@ const App = () => {
             id: Date.now(),
             email: data.email,
             passwordHash: 'hashed_password_123',
-            companyName: data.companyName,
+            name: data.name,
             phone: data.phone,
-            role: 'employer',
+            role: data.role,
             isLocked: false,
         };
         setUsers(prev => [...prev, newUser]);
@@ -1574,20 +1842,42 @@ const App = () => {
         if (!userInput.trim() || !ai.current) return;
         const newUserMessage: ChatMessage = { sender: 'user', text: userInput };
         setChatMessages(prev => [...prev, newUserMessage]);
+        const currentInput = userInput;
         setUserInput('');
         setIsBotTyping(true);
 
         try {
-            const prompt = selectedJob 
-                ? `Context: User is asking about the job "${selectedJob.title}" at "${selectedJob.company}".\nJob Description: ${selectedJob.description}\nUser question: "${userInput}"\nAnswer in Vietnamese.`
-                : `User question: "${userInput}"\nAnswer in Vietnamese.`;
-
-            const response = await ai.current.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: prompt,
+            // Step 1: Intent Analysis
+            const intentPrompt = `System: You are an intent classification AI for a job board chatbot. Analyze the user's message and determine if they are searching for a job or just having a general conversation. If they are searching for a job, identify the keywords (job title, location, skills). Respond ONLY with a JSON object in the format: For job search: { "intent": "JOB_SEARCH", "keywords": "extracted keywords" } For anything else: { "intent": "GENERAL_CONVERSATION" }\n\nUser message: "${currentInput}"`;
+            
+            const intentResponse = await ai.current.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: intentPrompt,
+                config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { intent: { type: Type.STRING }, keywords: { type: Type.STRING }}}}
             });
-            const botMessage: ChatMessage = { sender: 'bot', text: response.text };
-            setChatMessages(prev => [...prev, botMessage]);
+
+            const intentData = JSON.parse(intentResponse.text.trim());
+
+            if (intentData.intent === 'JOB_SEARCH' && intentData.keywords) {
+                // Step 2: Perform search and respond with rich cards
+                const foundJobs = searchJobs(intentData.keywords);
+                if (foundJobs.length > 0) {
+                    const botMessage: ChatMessage = { sender: 'bot', text: `Tôi đã tìm thấy ${foundJobs.length} công việc phù hợp với tìm kiếm của bạn:`, jobs: foundJobs };
+                    setChatMessages(prev => [...prev, botMessage]);
+                } else {
+                    const botMessage: ChatMessage = { sender: 'bot', text: `Rất tiếc, tôi không tìm thấy công việc nào cho "${intentData.keywords}". Bạn có thể thử với từ khóa khác không?` };
+                    setChatMessages(prev => [...prev, botMessage]);
+                }
+            } else {
+                // Step 3: General conversation
+                const chatPrompt = `User question: "${currentInput}"\nAnswer in Vietnamese.`;
+                 const response = await ai.current.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: chatPrompt,
+                });
+                const botMessage: ChatMessage = { sender: 'bot', text: response.text };
+                setChatMessages(prev => [...prev, botMessage]);
+            }
         } catch (error) {
             console.error("Gemini API error:", error);
             const errorMessage: ChatMessage = { sender: 'bot', text: 'Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại.' };
@@ -1601,8 +1891,57 @@ const App = () => {
         setSelectedJob(job);
         setIsNotificationOpen(false);
     };
+
+    const handleOpenJobFromChat = (job: Job) => {
+        setSelectedJob(job);
+        setIsChatOpen(false);
+    };
     
-    // --- ADMIN HANDLERS ---
+    // --- CHAT & ADMIN HANDLERS ---
+    const handleStartPrivateChat = (job: Job) => {
+        if (!currentUser) {
+            showToast("Vui lòng đăng nhập để chat với nhà tuyển dụng.");
+            setView('login');
+            setSelectedJob(null);
+            return;
+        }
+        if (currentUser.role !== 'jobseeker') {
+            showToast("Chức năng này chỉ dành cho người tìm việc.");
+            return;
+        }
+
+        const sessionId = `${job.id}-${currentUser.id}`;
+        const existingChat = privateChats.find(c => c.sessionId === sessionId);
+
+        if (!existingChat) {
+            const newChat: PrivateChatSession = {
+                sessionId,
+                jobId: job.id,
+                participants: { applicantId: currentUser.id, employerId: job.companyId },
+                messages: [{ senderId: 0, text: `Cuộc hội thoại về tin đăng "${job.title}" đã bắt đầu.`, timestamp: Date.now() }]
+            };
+            setPrivateChats(prev => [...prev, newChat]);
+        }
+        
+        setActivePrivateChat(sessionId);
+        setSelectedJob(null); // Close job detail modal
+    };
+    
+    const handleSendPrivateMessage = (sessionId: string, text: string) => {
+        if (!currentUser) return;
+        setPrivateChats(prev => prev.map(chat => {
+            if (chat.sessionId === sessionId) {
+                const newMessage: PrivateChatMessage = {
+                    senderId: currentUser.id,
+                    text,
+                    timestamp: Date.now()
+                };
+                return { ...chat, messages: [...chat.messages, newMessage] };
+            }
+            return chat;
+        }));
+    };
+    
     const toggleUserLock = useCallback((userId: number) => {
         setUsers(prev => prev.map(user => user.id === userId ? { ...user, isLocked: !user.isLocked } : user));
         const user = users.find(u => u.id === userId);
@@ -1658,6 +1997,45 @@ const App = () => {
         setJobToReport(null);
     };
 
+     const handleCvSubmit = useCallback((job: Job, file: File) => {
+        if (!currentUser || currentUser.role !== 'jobseeker') {
+            showToast("Vui lòng đăng nhập với tư cách người tìm việc để nộp CV.");
+            return;
+        }
+
+        // Simulate file upload to Supabase Storage
+        setTimeout(() => {
+            const simulatedUrl = `https://supabase.io/storage/v1/workhub-cvs/${currentUser.id}-${job.id}-${file.name}`;
+            const newApplication: Application = {
+                id: Date.now(),
+                jobId: job.id,
+                applicantId: currentUser.id,
+                cvFileUrl: simulatedUrl,
+                submittedAt: new Date().toISOString(),
+            };
+            setApplications(prev => [...prev, newApplication]);
+
+            // Simulate email notification
+            console.log(`--- EMAIL NOTIFICATION SIMULATION ---
+            To: ${job.recruiter.email}
+            Subject: Ứng tuyển mới cho vị trí: ${job.title}
+            Body:
+            Chào ${job.recruiter.name},
+
+            Bạn đã nhận được một hồ sơ ứng tuyển mới từ ${currentUser.name} cho vị trí "${job.title}".
+            Bạn có thể xem CV tại đường dẫn bảo mật sau:
+            ${simulatedUrl}
+
+            Trân trọng,
+            Hệ thống WorkHub
+            -------------------------------------`);
+
+            showToast("Nộp CV thành công! Nhà tuyển dụng đã được thông báo.");
+            setSelectedJob(null); // Close modal on success
+        }, 2000);
+    }, [currentUser, showToast]);
+
+
     // --- RENDER LOGIC ---
     const renderView = () => {
         switch (view) {
@@ -1666,7 +2044,7 @@ const App = () => {
             case 'signup':
                 return <SignupPage handleSignup={handleSignup} setView={setView} showToast={showToast} />;
             case 'employerDashboard':
-                return <EmployerDashboard currentUser={currentUser} jobs={jobs} payments={payments} handleEditJob={setJobToEdit} handleDeleteJob={deleteJob} />;
+                return <EmployerDashboard currentUser={currentUser} jobs={jobs} payments={payments} privateChats={privateChats} users={users} handleEditJob={setJobToEdit} handleDeleteJob={deleteJob} openPrivateChat={setActivePrivateChat}/>;
             case 'adminDashboard':
                 return <AdminDashboard currentUser={currentUser} setView={setView} users={users} jobs={jobs} reports={reports} actionLogs={actionLogs} toggleUserLock={toggleUserLock} deleteJob={deleteJob} showToast={showToast} handleOpenEditModal={setJobToEdit} handleReportAction={handleReportAction} handleReviewStatusChange={handleReviewStatusChange} />;
             case 'adminLogin':
@@ -1678,6 +2056,8 @@ const App = () => {
                 return <MainContent filters={filters} handleFilterChange={handleFilterChange} uniqueIndustries={uniqueIndustries} showOnlySaved={showOnlySaved} setShowOnlySaved={setShowOnlySaved} filteredJobs={filteredJobs} setSelectedJob={setSelectedJob} savedJobIds={savedJobIds} toggleSaveJob={toggleSaveJob} />;
         }
     };
+    
+    const activeChatSession = privateChats.find(c => c.sessionId === activePrivateChat);
 
     return (
         <>
@@ -1699,14 +2079,27 @@ const App = () => {
                     onClose={() => setSelectedJob(null)}
                     handleAddNewReview={handleAddNewReview}
                     showToast={showToast}
-                    setIsChatOpen={setIsChatOpen}
+                    handleStartPrivateChat={handleStartPrivateChat}
                     handleOpenReportModal={setJobToReport}
                     googleApiKey={CONFIG.GOOGLE_API_KEY}
+                    currentUser={currentUser}
+                    applications={applications}
+                    handleCvSubmit={handleCvSubmit}
+                />
+            )}
+            {activeChatSession && currentUser && (
+                <PrivateChatModal
+                    session={activeChatSession}
+                    currentUser={currentUser}
+                    users={users}
+                    job={jobs.find(j => j.id === activeChatSession.jobId)}
+                    onClose={() => setActivePrivateChat(null)}
+                    onSendMessage={handleSendPrivateMessage}
                 />
             )}
             {jobToEdit && <EditJobModal job={jobToEdit} onClose={() => setJobToEdit(null)} onUpdate={handleUpdateJob} showToast={showToast} />}
             {jobToReport && <ReportJobModal job={jobToReport} onClose={() => setJobToReport(null)} onSubmit={handleSubmitReport} showToast={showToast} />}
-            {isPostingModalOpen && <JobPostingModal currentUser={currentUser} onClose={() => setIsPostingModalOpen(false)} onPost={handlePostJob} />}
+            {isPostingModalOpen && currentUser?.role ==='employer' && <JobPostingModal currentUser={currentUser} onClose={() => setIsPostingModalOpen(false)} onPost={handlePostJob} />}
             {jobDataForPayment && <PaymentModal jobData={jobDataForPayment} onClose={() => setJobDataForPayment(null)} onSuccess={handlePaymentSuccess} showToast={showToast} />}
             <ChatWidget 
                 isChatOpen={isChatOpen}
@@ -1718,12 +2111,24 @@ const App = () => {
                 isBotTyping={isBotTyping}
                 isAiReady={isAiReady}
                 selectedJob={selectedJob}
+                handleOpenJobFromChat={handleOpenJobFromChat}
             />
-            {toast && (
+             {toast && (
                 <div className="fixed top-5 right-5 bg-gray-800 text-white px-4 py-2 rounded-md shadow-lg z-50 animate-fade-in-out">
                     {toast.message}
                 </div>
             )}
+             <style>{`
+                @keyframes fade-in-out {
+                    0% { opacity: 0; transform: translateY(-20px); }
+                    10% { opacity: 1; transform: translateY(0); }
+                    90% { opacity: 1; transform: translateY(0); }
+                    100% { opacity: 0; transform: translateY(-20px); }
+                }
+                .animate-fade-in-out {
+                    animation: fade-in-out 3s ease-in-out forwards;
+                }
+            `}</style>
         </>
     );
 };
