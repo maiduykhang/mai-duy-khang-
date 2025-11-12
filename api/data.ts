@@ -3,12 +3,12 @@ import { kv } from '@vercel/kv';
 // --- INITIAL MOCK DATA (SERVER-SIDE) ---
 // This data will be used to seed the Vercel KV database on the first run.
 const mockUsersDatabase = [
-    { id: 1, email: 'tuyendung@7-eleven.vn', passwordHash: 'hashed_password_123', name: '7-Eleven', phone: '0901234567', role: 'employer', isLocked: false },
-    { id: 2, email: 'hr@thecoffeehouse.vn', passwordHash: 'hashed_password_123', name: 'The Coffee House', phone: '0987654321', role: 'employer', isLocked: false },
-    { id: 3, email: 'recruitment@kfcvietnam.com.vn', passwordHash: 'hashed_password_123', name: 'KFC', phone: '0912345678', role: 'employer', isLocked: true },
-    { id: 4, email: 'tuyendung@guardian.com.vn', passwordHash: 'hashed_password_123', name: 'Guardian', phone: '0998877665', role: 'employer', isLocked: false },
-    { id: 100, email: 'admin@workhub.vn', passwordHash: 'admin_pass', name: 'WorkHub Admin', phone: '0111222333', role: 'admin', isLocked: false },
-    { id: 201, email: 'applicant1@email.com', passwordHash: 'hashed_password_123', name: 'Nguyễn Văn An', phone: '0911111111', role: 'jobseeker', isLocked: false }
+    { id: 1, email: 'tuyendung@7-eleven.vn', passwordHash: 'password123', name: '7-Eleven', phone: '0901234567', role: 'employer', isLocked: false },
+    { id: 2, email: 'hr@thecoffeehouse.vn', passwordHash: 'password123', name: 'The Coffee House', phone: '0987654321', role: 'employer', isLocked: false },
+    { id: 3, email: 'recruitment@kfcvietnam.com.vn', passwordHash: 'password123', name: 'KFC', phone: '0912345678', role: 'employer', isLocked: true },
+    { id: 4, email: 'tuyendung@guardian.com.vn', passwordHash: 'password123', name: 'Guardian', phone: '0998877665', role: 'employer', isLocked: false },
+    { id: 100, email: 'admin.workhub@system.local', passwordHash: 'S3cur3Adm1nP@ssw0rd', name: 'WorkHub Admin', phone: '0111222333', role: 'admin', isLocked: false },
+    { id: 201, email: 'applicant1@email.com', passwordHash: 'password123', name: 'Nguyễn Văn An', phone: '0911111111', role: 'jobseeker', isLocked: false }
 ];
 const mockJobsDatabase = [
     {
