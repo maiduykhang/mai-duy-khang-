@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // --- TYPES ---
@@ -34,12 +32,6 @@ type Job = {
   reviews: Review[];
   isFeatured: boolean;
   companyId: number; // Link job to a user
-};
-
-type ChatMessage = {
-  sender: 'user' | 'bot';
-  text: string;
-  jobs?: Job[];
 };
 
 type Review = { 
@@ -110,7 +102,6 @@ type Application = {
 
 type CurrentUser = Omit<User, 'passwordHash'> | null;
 type AppView = 'main' | 'login' | 'signup' | 'employerDashboard' | 'adminDashboard' | 'adminLogin';
-type BotStatus = 'idle' | 'thinking';
 
 // Fix: Add an explicit type for the fallback data to ensure TypeScript infers nested types correctly (e.g., tuples for GPS, union types for roles).
 type FallbackData = {
@@ -218,109 +209,120 @@ const Rating = ({ rating, count }: { rating: number; count?: number }) => {
     );
 };
 
-type ChatWidgetProps = {
-    isChatOpen: boolean;
-    setIsChatOpen: React.Dispatch<React.SetStateAction<boolean>>;
-    chatMessages: ChatMessage[];
-    userInput: string;
-    setUserInput: React.Dispatch<React.SetStateAction<string>>;
-    handleSendMessage: () => void;
-    botStatus: BotStatus;
-    isAiReady: boolean;
-    selectedJob: Job | null;
-    handleOpenJobFromChat: (job: Job) => void;
-};
-
-const ChatWidget = ({ isChatOpen, setIsChatOpen, chatMessages, userInput, setUserInput, handleSendMessage, botStatus, isAiReady, selectedJob, handleOpenJobFromChat }: ChatWidgetProps) => {
-    const chatContainerRef = useRef<HTMLDivElement>(null);
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
+// --- NEW CHAT COMPONENT ---
+const ChatBotWidget = () => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [messages, setMessages] = useState<{role: 'assistant' | 'user', content: string}[]>([
+        { role: 'assistant', content: 'Xin chào! Tôi có thể giúp gì?' }
+    ]);
+    const [input, setInput] = useState('');
+    const [loading, setLoading] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (chatContainerRef.current) {
-            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-        }
-    }, [chatMessages, botStatus]);
-    
-    useEffect(() => {
-        if (isChatOpen && textareaRef.current) {
-            textareaRef.current.focus();
-        }
-    }, [isChatOpen]);
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages, loading]);
 
-    useEffect(() => {
-        if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-            textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
-        }
-    }, [userInput]);
+    const sendMessage = async () => {
+        if (!input.trim() || loading) return;
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSendMessage();
+        const userMsg = input.trim();
+        const newMessages = [...messages, { role: 'user' as const, content: userMsg }];
+        setMessages(newMessages);
+        setInput('');
+        setLoading(true);
+
+        try {
+            const res = await fetch('/api/chatbot-proxy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: userMsg,
+                    conversationHistory: messages
+                })
+            });
+
+            const data = await res.json();
+            
+            if (data.success) {
+                setMessages(data.conversationHistory);
+            } else {
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: data.error || 'Xin lỗi, có lỗi xảy ra.'
+                }]);
+            }
+        } catch (err) {
+            console.error(err);
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: 'Không thể kết nối. Vui lòng thử lại.'
+            }]);
+        } finally {
+            setLoading(false);
         }
     };
 
     return (
         <div className="fixed bottom-5 right-5 z-30">
-            {isChatOpen && (
-                 <div className="w-80 h-96 bg-white rounded-lg shadow-xl flex flex-col">
+            {isOpen && (
+                <div className="flex flex-col h-[500px] w-80 md:w-96 bg-white rounded-lg shadow-xl">
                     <div className="p-3 bg-blue-600 text-white rounded-t-lg">
-                        <h3 className="font-semibold">{selectedJob ? `Chat với NTD: ${selectedJob.company}` : 'Trợ lý AI WorkHub'}</h3>
+                        <h3 className="font-semibold">Trợ lý AI WorkHub</h3>
                         <p className="text-xs">Hỏi tôi bất cứ điều gì về việc làm!</p>
                     </div>
-                    <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto space-y-3 bg-gray-50">
-                        {chatMessages.length === 0 && (
-                            <div className="text-center text-sm text-gray-500">Bắt đầu cuộc trò chuyện...</div>
-                        )}
-                        {chatMessages.map((msg, i) => (
-                             <div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                {msg.jobs ? (
-                                    <div className="w-full space-y-2">
-                                        <p className="max-w-[80%] p-2 rounded-lg text-sm shadow-sm whitespace-pre-wrap break-words bg-white text-gray-800 mb-2">{msg.text}</p>
-                                        {msg.jobs.map(job => (
-                                            <div key={job.id} className="bg-white rounded-lg p-2 shadow-sm border w-full text-left flex items-start space-x-3">
-                                                <img src={job.logo} alt={job.company} className="w-10 h-10 object-contain rounded-md border p-1 bg-white mt-1"/>
-                                                <div className="flex-1">
-                                                    <p className="font-bold text-sm text-gray-800">{job.title}</p>
-                                                    <p className="text-xs text-gray-600">{job.company}</p>
-                                                    <button onClick={() => handleOpenJobFromChat(job)} className="mt-1 text-xs text-blue-600 font-semibold hover:underline">Xem chi tiết &rarr;</button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className={`max-w-[80%] p-2 rounded-lg text-sm shadow-sm whitespace-pre-wrap break-words ${msg.sender === 'user' ? 'bg-blue-500 text-white' : 'bg-white text-gray-800'}`}>{msg.text}</p>
-                                )}
+                    {/* Messages */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50">
+                        {messages.map((msg, i) => (
+                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[80%] px-3 py-2 rounded-lg shadow-sm ${
+                            msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'
+                            }`}>
+                            {msg.content}
                             </div>
+                        </div>
                         ))}
-                        {botStatus === 'thinking' && <div className="flex justify-start"><p className="p-2 rounded-lg text-sm bg-white text-gray-800 shadow-sm animate-pulse">Đang suy nghĩ...</p></div>}
+                        {loading && (
+                        <div className="flex justify-start">
+                            <div className="bg-gray-100 px-4 py-2 rounded-lg">
+                            <div className="flex gap-1.5 items-center">
+                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}} />
+                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}} />
+                            </div>
+                            </div>
+                        </div>
+                        )}
+                        <div ref={messagesEndRef} />
                     </div>
-                    <div className="p-2 border-t flex items-start">
-                        <textarea 
-                            ref={textareaRef}
-                            value={userInput} 
-                            onChange={e => setUserInput(e.target.value)} 
-                            onKeyDown={handleKeyDown}
-                            placeholder={!isAiReady ? "Trợ lý AI không sẵn sàng" : "Nhập câu hỏi..."}
-                            className="flex-1 border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 resize-none overflow-hidden"
-                            disabled={!isAiReady || botStatus === 'thinking'}
-                            rows={1}
+
+                    {/* Input */}
+                    <div className="border-t p-2 flex gap-2">
+                        <input
+                        value={input}
+                        onChange={e => setInput(e.target.value)}
+                        onKeyPress={e => e.key === 'Enter' && sendMessage()}
+                        placeholder="Nhập câu hỏi..."
+                        disabled={loading}
+                        className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                         />
-                        <button 
-                            onClick={handleSendMessage} 
-                            className="ml-2 bg-blue-500 text-white px-3 py-1 rounded-md text-sm hover:bg-blue-600 disabled:bg-blue-300 self-end"
-                            disabled={!isAiReady || botStatus === 'thinking'}
-                        >Gửi</button>
+                        <button
+                        onClick={sendMessage}
+                        disabled={loading || !input.trim()}
+                        className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm"
+                        >
+                        Gửi
+                        </button>
                     </div>
-                 </div>
+                </div>
             )}
-            <button onClick={() => setIsChatOpen(!isChatOpen)} className="bg-blue-600 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700 mt-2">
+             <button onClick={() => setIsOpen(!isOpen)} className="bg-blue-600 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700 mt-2">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
             </button>
         </div>
     );
 };
+
 
 // --- APP SUB-COMPONENTS ---
 // Moved components outside of the main App component to prevent re-definition on each render,
@@ -1522,12 +1524,6 @@ const App = () => {
     const [showOnlySaved, setShowOnlySaved] = useState(false);
     const [savedJobIds, setSavedJobIds] = useState<Set<number>>(new Set());
 
-    const [isChatOpen, setIsChatOpen] = useState(false);
-    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-    const [userInput, setUserInput] = useState('');
-    const [botStatus, setBotStatus] = useState<BotStatus>('idle');
-    const [isAiReady, setIsAiReady] = useState(false);
-
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [newJobNotifications, setNewJobNotifications] = useState<Job[]>([]);
     const notificationRef = useRef<HTMLDivElement>(null);
@@ -1671,11 +1667,6 @@ const App = () => {
     }, [view, currentUser, handleNavigate, showToast]);
 
     useEffect(() => {
-        setIsAiReady(true);
-        setChatMessages([{ sender: 'bot', text: 'Chào bạn! Tôi là trợ lý AI của WorkHub. Tôi có thể giúp gì cho bạn hôm nay?' }]);
-    }, []);
-
-    useEffect(() => {
         if (typeof document !== 'undefined') {
             const style = document.createElement('style');
             style.innerHTML = `
@@ -1736,18 +1727,6 @@ const App = () => {
         }).sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
     }, [jobs, filters, showOnlySaved, savedJobIds]);
     
-    const searchJobs = (keywords: string): Job[] => {
-        if (!keywords) return [];
-        const searchTerms = keywords.toLowerCase().split(' ');
-        return jobs
-            .filter(job => {
-                const jobText = `${job.title} ${job.company} ${job.location} ${job.description}`.toLowerCase();
-                return searchTerms.every(term => jobText.includes(term));
-            })
-            .sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0)) // Prioritize featured jobs
-            .slice(0, 3);
-    };
-
     // --- HANDLERS ---
     const handleFilterChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -1940,71 +1919,10 @@ const App = () => {
             showToast("Không thể gửi đánh giá. Vui lòng thử lại.");
         }
     }, [jobs, showToast, updateServerData]);
-
-    const handleSendMessage = useCallback(async () => {
-        if (!userInput.trim() || botStatus === 'thinking') return;
-
-        const newUserMessage: ChatMessage = { sender: 'user', text: userInput };
-        const updatedMessages = [...chatMessages, newUserMessage];
-        setChatMessages(updatedMessages);
-        const currentInput = userInput;
-        setUserInput('');
-        setBotStatus('thinking');
-
-        try {
-            const res = await fetch('/api/chatbot-proxy', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message: currentInput,
-                    history: updatedMessages.slice(0, -1) // Send history without the current message
-                }),
-            });
-
-            if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.error || 'Chat request failed');
-            }
-
-            const result = await res.json();
-            // The API now returns a stringified JSON, so we need to parse it twice.
-            const parsedData = JSON.parse(result.data);
-
-            let botMessage: ChatMessage;
-
-            if (parsedData.intent === 'JOB_SEARCH' && parsedData.keywords) {
-                const foundJobs = searchJobs(parsedData.keywords);
-                botMessage = foundJobs.length > 0 ?
-                    { sender: 'bot', text: parsedData.reply, jobs: foundJobs } :
-                    { sender: 'bot', text: `Rất tiếc, tôi không tìm thấy công việc nào cho "${parsedData.keywords}".` };
-            } else {
-                botMessage = { sender: 'bot', text: parsedData.reply };
-            }
-
-            setChatMessages(prev => [...prev, botMessage]);
-
-        } catch (error: any) {
-            let errorMessage = 'Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại.';
-            if (error.message.includes("API key not configured")) {
-                errorMessage = 'Lỗi cấu hình: API Key của Trợ lý AI chưa được thiết lập trên máy chủ.';
-            } else if (error instanceof SyntaxError) {
-                errorMessage = 'Lỗi: Không thể phân tích phản hồi từ AI. Vui lòng thử lại.';
-                console.error("JSON parsing error from AI response:", error);
-            }
-            setChatMessages(prev => [...prev, { sender: 'bot', text: errorMessage }]);
-        } finally {
-            setBotStatus('idle');
-        }
-    }, [userInput, botStatus, chatMessages, searchJobs]);
     
     const handleOpenNotificationJob = (job: Job) => {
         setSelectedJob(job);
         setIsNotificationOpen(false);
-    };
-
-    const handleOpenJobFromChat = (job: Job) => {
-        setSelectedJob(job);
-        setIsChatOpen(false);
     };
     
     // --- CHAT & ADMIN HANDLERS ---
@@ -2278,18 +2196,7 @@ const App = () => {
                 {jobToReport && <ReportJobModal job={jobToReport} onClose={() => setJobToReport(null)} onSubmit={handleSubmitReport} showToast={showToast} />}
                 {isPostingModalOpen && currentUser?.role ==='employer' && <JobPostingModal currentUser={currentUser} onClose={() => setIsPostingModalOpen(false)} onPost={handlePostJob} />}
                 {jobDataForPayment && <PaymentModal jobData={jobDataForPayment} onClose={() => setJobDataForPayment(null)} onSuccess={handlePaymentSuccess} showToast={showToast} />}
-                <ChatWidget 
-                    isChatOpen={isChatOpen}
-                    setIsChatOpen={setIsChatOpen}
-                    chatMessages={chatMessages}
-                    userInput={userInput}
-                    setUserInput={setUserInput}
-                    handleSendMessage={handleSendMessage}
-                    botStatus={botStatus}
-                    isAiReady={isAiReady}
-                    selectedJob={selectedJob}
-                    handleOpenJobFromChat={handleOpenJobFromChat}
-                />
+                <ChatBotWidget />
               </>
             )}
              {toast && (
