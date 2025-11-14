@@ -1,11 +1,11 @@
-// FIX: Use AuthOptions instead of NextAuthOptions and combine imports to resolve type errors.
-import NextAuth, { type AuthOptions } from 'next-auth';
+// FIX: Use NextAuthOptions instead of AuthOptions for compatibility with next-auth v4 used in Pages Router.
+import NextAuth, { type NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import prisma from '@/lib/prisma'
 import { PrismaAdapter } from '@next-auth/prisma-adapter'
 
-export const authOptions: AuthOptions = {
+export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
     CredentialsProvider({

@@ -8,26 +8,25 @@ export async function POST(request) {
   try {
     const { message, conversationHistory = [] } = await request.json();
     
-    // Validate
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+    if (!message || message.trim().length === 0) {
       return NextResponse.json({
         success: false,
         error: 'Tin nhắn không hợp lệ'
       }, { status: 400 });
     }
 
-    // Get API key from environment
     const apiKey = process.env.ANTHROPIC_API_KEY;
     
     if (!apiKey) {
-      console.error('ANTHROPIC_API_KEY not configured');
+      console.error('❌ ANTHROPIC_API_KEY not set in environment');
       return NextResponse.json({
         success: false,
-        error: 'Chatbot chưa được cấu hình'
+        error: 'Chatbot chưa được cấu hình. Vui lòng liên hệ admin.'
       }, { status: 500 });
     }
 
-    // Call Anthropic API directly (no SDK to avoid import issues)
+    console.log('✓ Calling Anthropic API...');
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -36,19 +35,11 @@ export async function POST(request) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-3-haiku-20240307',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 1024,
-        system: `Bạn là trợ lý tuyển dụng thông minh của WorkHub - Trung tâm việc làm Việt Nam.
-
-Nhiệm vụ:
-- Tư vấn tìm việc làm phù hợp
-- Hướng dẫn viết CV chuyên nghiệp
-- Chuẩn bị phỏng vấn
-- Giải đáp về thị trường lao động
-
-Phong cách: Thân thiện, nhiệt tình, ngắn gọn (2-4 câu).`,
+        system: 'Bạn là trợ lý tuyển dụng của WorkHub. Tư vấn tìm việc, CV, phỏng vấn. Trả lời ngắn gọn 2-4 câu.',
         messages: [
-          ...conversationHistory.slice(-10), // Last 10 messages
+          ...conversationHistory.slice(-10),
           { role: 'user', content: message }
         ],
       }),
@@ -56,21 +47,20 @@ Phong cách: Thân thiện, nhiệt tình, ngắn gọn (2-4 câu).`,
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Anthropic API error:', response.status, errorText);
+      console.error('❌ Anthropic API error:', response.status, errorText);
       
-      const status = response.status;
-      let error = 'Chatbot tạm thời không khả dụng';
-      if (status === 401) error = 'API key không hợp lệ';
-      if (status === 429) error = 'Hệ thống đang quá tải. Vui lòng thử lại sau.';
-
       return NextResponse.json({
         success: false,
-        error
-      }, { status });
+        error: response.status === 429 
+          ? 'Hệ thống đang quá tải. Vui lòng thử lại sau.' 
+          : 'Chatbot tạm thời không khả dụng.'
+      }, { status: 500 });
     }
 
     const data = await response.json();
     const reply = data.content[0].text;
+
+    console.log('✓ Chatbot response successful');
 
     return NextResponse.json({
       success: true,
@@ -83,7 +73,7 @@ Phong cách: Thân thiện, nhiệt tình, ngắn gọn (2-4 câu).`,
     });
 
   } catch (error) {
-    console.error('Chatbot error:', error);
+    console.error('❌ Chatbot error:', error);
     return NextResponse.json({
       success: false,
       error: 'Đã xảy ra lỗi. Vui lòng thử lại.'
@@ -97,5 +87,6 @@ export async function GET() {
     status: 'ok',
     message: 'Chatbot API is running',
     hasApiKey: !!process.env.ANTHROPIC_API_KEY,
+    timestamp: new Date().toISOString()
   });
 }

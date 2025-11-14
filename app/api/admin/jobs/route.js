@@ -3,6 +3,7 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
 // This is a dynamic route, so we don't need to specify runtime
 // export const runtime = 'edge';

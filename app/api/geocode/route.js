@@ -20,7 +20,7 @@ export async function POST(request) {
     if (!result) {
       return NextResponse.json({
         success: false,
-        error: 'Không tìm thấy địa chỉ. Vui lòng nhập chính xác hơn.'
+        error: 'Không tìm thấy địa chỉ. Vui lòng nhập chính xác hơn (số nhà, tên đường, quận/huyện).'
       }, { status: 400 });
     }
 
@@ -42,25 +42,36 @@ export async function POST(request) {
 async function geocodeFlexible(input, strict) {
   const trimmed = input.trim();
   
-  // 1. Extract from Google Maps URL
+  // 1. Extract from Google Maps URL (all formats)
   const urlPatterns = [
-    /@(-?\d+\.\d*),(-?\d+\.\d*)/,
-    /!3d(-?\d+\.\d*)!4d(-?\d+\.\d*)/,
+    /@(-?\d+\.?\d*),(-?\d+\.?\d*)/,
+    /!3d(-?\d+\.?\d*)!4d(-?\d+\.?\d*)/,
+    /place\/(-?\d+\.?\d*),(-?\d+\.?\d*)/,
+    /ll=(-?\d+\.?\d*),(-?\d+\.?\d*)/,
   ];
+
   for (const pattern of urlPatterns) {
     const match = trimmed.match(pattern);
     if (match) {
       const lat = parseFloat(match[1]);
       const lng = parseFloat(match[2]);
+      
       if (isValidVietnamCoords(lat, lng)) {
         const address = await reverseGeocode(lat, lng);
-        return { lat, lng, formatted_address: address || trimmed, source: 'google_maps_url', accuracy: 'ROOFTOP', verified: true };
+        return {
+          lat,
+          lng,
+          formatted_address: address || trimmed,
+          source: 'google_maps_url',
+          accuracy: 'ROOFTOP',
+          verified: true
+        };
       }
     }
   }
 
   // 2. Direct coordinates
-  const coordPattern = /^(-?\d+\.\d*)[,\s]+(-?\d+\.\d*)$/;
+  const coordPattern = /^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$/;
   const coordMatch = trimmed.match(coordPattern);
   if (coordMatch) {
     const lat = parseFloat(coordMatch[1]);
@@ -71,22 +82,39 @@ async function geocodeFlexible(input, strict) {
     }
   }
 
-  // 3. Full address geocoding
+  // 3. Plus Code (e.g., 2Q63+Q4C Ninh Kiều, Cần Thơ)
+  const plusCodePattern = /\b([23456789CFGHJMPQRVWX]{4}\+[23456789CFGHJMPQRVWX]{2,})\b/i;
+  const plusCodeMatch = trimmed.match(plusCodePattern);
+  
+  if (plusCodeMatch) {
+    const result = await geocodeWithGoogle(plusCodeMatch[1]);
+    if (result && result.accuracy !== 'APPROXIMATE') {
+      return { ...result, source: 'plus_code', verified: true };
+    }
+  }
+
+  // 4. Full address geocoding
   let normalized = trimmed;
   if (!normalized.toLowerCase().includes('việt nam') && !normalized.toLowerCase().includes('vietnam')) {
     normalized += ', Việt Nam';
   }
   
+  normalized = normalized
+    .replace(/\bq\.?\s*/gi, 'Quận ')
+    .replace(/\bp\.?\s*/gi, 'Phường ')
+    .replace(/\btp\.?\s*/gi, 'Thành phố ')
+    .replace(/\bđ\.?\s*/gi, 'Đường ')
+    .replace(/\bpgd\.?\s*/gi, 'Phòng giao dịch ');
+  
   const result = await geocodeWithGoogle(normalized);
   if (!result) return null;
   
-  // Strict validation for interview addresses
   if (strict) {
     if (result.accuracy === 'APPROXIMATE') {
-      return { ...result, verified: false, warning: 'Địa chỉ chưa đủ chi tiết. Vui lòng thêm số nhà, tên đường cụ thể.' };
+       return { ...result, verified: false, warning: '⚠️ Địa chỉ chưa đủ chi tiết. Vui lòng thêm số nhà, tên đường cụ thể để ứng viên dễ tìm.' };
     }
-    if (!/\d/.test(result.formatted_address.split(',')[0])) {
-       return { ...result, verified: false, warning: 'Vui lòng thêm số nhà để địa chỉ chính xác hơn.' };
+    if (!/\d/.test(trimmed)) {
+       return { ...result, verified: false, warning: '⚠️ Vui lòng thêm số nhà vào địa chỉ (VD: số 123 đường ABC).' };
     }
   }
   
@@ -112,7 +140,8 @@ async function geocodeWithGoogle(address) {
           lng: location.lng,
           formatted_address: result.formatted_address,
           place_id: result.place_id,
-          accuracy: result.geometry.location_type
+          accuracy: result.geometry.location_type,
+          address_components: result.address_components
         };
       }
     }

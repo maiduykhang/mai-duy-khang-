@@ -1,14 +1,12 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
+import type { NextApiHandler } from 'next';
 import prisma from '@/lib/prisma';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/[...nextauth]';
 // FIX: Use Prisma namespace for generated enums.
 import { Prisma } from '@prisma/client';
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
+// FIX: Refactored to use NextApiHandler to resolve type inference issue with req.method.
+const handler: NextApiHandler = async (req, res) => {
   const { id } = req.query;
   const session = await getServerSession(req, res, authOptions);
 
@@ -64,3 +62,5 @@ export default async function handler(
       res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 }
+
+export default handler;
