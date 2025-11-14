@@ -2,7 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import prisma from '@/lib/prisma';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/[...nextauth]';
-import { Role } from '@prisma/client';
+// FIX: Use Prisma namespace for generated enums.
+import { Prisma } from '@prisma/client';
 
 export default async function handler(
   req: NextApiRequest,
@@ -30,7 +31,8 @@ export default async function handler(
       break;
 
     case 'PUT':
-      if (!session || (session.user.role !== Role.ADMIN && session.user.role !== Role.MODERATOR)) {
+      // FIX: Use Prisma.Role enum. Session type should be augmented by next-auth.d.ts.
+      if (!session || ((session.user as any).role !== Prisma.Role.ADMIN && (session.user as any).role !== Prisma.Role.MODERATOR)) {
         return res.status(403).json({ error: 'Forbidden' });
       }
       try {
@@ -45,7 +47,8 @@ export default async function handler(
       break;
 
     case 'DELETE':
-      if (!session || (session.user.role !== Role.ADMIN && session.user.role !== Role.MODERATOR)) {
+      // FIX: Use Prisma.Role enum.
+      if (!session || ((session.user as any).role !== Prisma.Role.ADMIN && (session.user as any).role !== Prisma.Role.MODERATOR)) {
         return res.status(403).json({ error: 'Forbidden' });
       }
       try {

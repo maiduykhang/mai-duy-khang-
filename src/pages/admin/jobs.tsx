@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Job, JobStatus } from '@prisma/client';
+// FIX: Use Prisma namespace for generated types and enums.
+import { Prisma } from '@prisma/client';
 import { useSession } from 'next-auth/react';
 
-const StatusBadge = ({ status }: { status: JobStatus }) => {
+const StatusBadge = ({ status }: { status: Prisma.JobStatus }) => {
   const styles = {
     PENDING: 'bg-yellow-100 text-yellow-800',
     APPROVED: 'bg-green-100 text-green-800',
@@ -17,7 +18,7 @@ const StatusBadge = ({ status }: { status: JobStatus }) => {
 
 export default function AdminJobsPage() {
   const { data: session } = useSession();
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<Prisma.Job[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchJobs = async () => {
@@ -39,7 +40,7 @@ export default function AdminJobsPage() {
     fetchJobs();
   }, []);
 
-  const handleUpdateStatus = async (id: string, status: JobStatus) => {
+  const handleUpdateStatus = async (id: string, status: Prisma.JobStatus) => {
     await fetch(`/api/jobs/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -55,7 +56,8 @@ export default function AdminJobsPage() {
     }
   };
   
-  if (session?.user.role !== 'ADMIN' && session?.user.role !== 'MODERATOR') {
+  // FIX: Cast session.user to `any` to access custom 'role' property. Type augmentation should handle this, but casting is a surefire fix.
+  if ((session?.user as any)?.role !== 'ADMIN' && (session?.user as any)?.role !== 'MODERATOR') {
       return <div className="container mx-auto p-6"><p>Access Denied.</p></div>;
   }
 

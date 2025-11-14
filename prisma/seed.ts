@@ -1,4 +1,4 @@
-import { PrismaClient, Role, JobStatus } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -18,7 +18,8 @@ async function main() {
       email: 'admin@workhub.com',
       name: 'Admin User',
       password: hashedPassword,
-      role: Role.ADMIN,
+      // FIX: Use Prisma.Role enum.
+      role: Prisma.Role.ADMIN,
       emailVerified: new Date(),
     },
   });
@@ -35,7 +36,8 @@ async function main() {
         description: 'We are looking for a skilled Backend Developer to join our team...',
         requirements: 'Node.js, PostgreSQL, Docker, AWS experience required.',
         applicationLink: 'https://example.com/apply/backend-dev',
-        status: JobStatus.APPROVED,
+        // FIX: Use Prisma.JobStatus enum.
+        status: Prisma.JobStatus.APPROVED,
       },
       {
         title: 'Frontend Developer',
@@ -45,7 +47,8 @@ async function main() {
         description: 'Join our creative team to build amazing user interfaces...',
         requirements: 'React, TypeScript, Next.js, Tailwind CSS skills are a must.',
         applicationLink: 'https://example.com/apply/frontend-dev',
-        status: JobStatus.APPROVED,
+        // FIX: Use Prisma.JobStatus enum.
+        status: Prisma.JobStatus.APPROVED,
       },
       {
         title: 'Data Analyst',
@@ -55,7 +58,8 @@ async function main() {
         description: 'We are seeking a data-driven analyst to help us make better decisions.',
         requirements: 'SQL, Python (Pandas), Tableau or Power BI knowledge.',
         applicationLink: 'https://example.com/apply/data-analyst',
-        status: JobStatus.PENDING,
+        // FIX: Use Prisma.JobStatus enum.
+        status: Prisma.JobStatus.PENDING,
       },
     ],
     skipDuplicates: true,
@@ -70,7 +74,7 @@ main()
     console.error(e);
     await prisma.$disconnect();
     // FIX: Cast `process` to `any` to bypass TypeScript error about `exit` property. This script runs in a Node.js environment where `process.exit` is available.
-    process.exit(1);
+    (process as any).exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();

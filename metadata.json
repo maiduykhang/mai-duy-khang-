@@ -1,4 +1,5 @@
 {
-  "name": "ho-tro-viet-lam",
-  "description": "Một ứng dụng bảng tin việc làm được xây dựng bằng React và Tailwind CSS, cho phép người dùng tìm kiếm công việc và nhà tuyển dụng đăng tin tuyển dụng một cách an toàn và hiệu quả."
+  "name": "WorkHub",
+  "description": "Nền tảng tìm kiếm việc làm và tuyển dụng hàng đầu Việt Nam. An toàn, hiệu quả, và cập nhật thời gian thực, với trợ lý AI và xác minh địa chỉ tin cậy.",
+  "requestFramePermissions": []
 }

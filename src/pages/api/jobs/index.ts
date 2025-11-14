@@ -2,7 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import prisma from '@/lib/prisma';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/[...nextauth]';
-import { Job, Role } from '@prisma/client';
+// FIX: Use Prisma namespace for generated types and enums.
+import { Prisma } from '@prisma/client';
 
 export default async function handler(
   req: NextApiRequest,
@@ -14,7 +15,8 @@ export default async function handler(
     case 'GET':
       try {
         // Allow admin to see all jobs, public can only see approved jobs
-        const whereClause = session?.user?.role === Role.ADMIN || session?.user?.role === Role.MODERATOR && req.query.all === 'true'
+        // FIX: Use Prisma.Role enum. Session type fix should come from next-auth augmentation.
+        const whereClause = (session?.user as any)?.role === Prisma.Role.ADMIN || (session?.user as any)?.role === Prisma.Role.MODERATOR && req.query.all === 'true'
           ? {}
           : { status: 'APPROVED' };
         
@@ -29,12 +31,14 @@ export default async function handler(
       break;
 
     case 'POST':
-      if (!session || (session.user.role !== Role.ADMIN && session.user.role !== Role.MODERATOR)) {
+      // FIX: Use Prisma.Role enum.
+      if (!session || ((session.user as any).role !== Prisma.Role.ADMIN && (session.user as any).role !== Prisma.Role.MODERATOR)) {
         return res.status(403).json({ error: 'Forbidden' });
       }
       try {
         const { title, company, location, description, requirements, salary, applicationLink } = req.body;
-        const newJob: Job = await prisma.job.create({
+        // FIX: Use Prisma.Job for type annotation.
+        const newJob: Prisma.Job = await prisma.job.create({
           data: {
             title,
             company,

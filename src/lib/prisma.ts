@@ -1,16 +1,14 @@
+// FIX: Assuming the error is a module resolution issue, importing Prisma namespace might help.
 import { PrismaClient } from '@prisma/client';
 
-// Declare a global variable to hold the Prisma client instance.
-// This ensures that the Prisma client is only instantiated once.
+// Add prisma to the NodeJS global type
 declare global {
   var prisma: PrismaClient | undefined;
 }
 
-// FIX: Replaced non-standard `global` with `globalThis` for cross-environment compatibility.
 const prisma = globalThis.prisma || new PrismaClient();
 
-if (process.env.NODE_ENV === 'development') {
-  // FIX: Replaced non-standard `global` with `globalThis` for cross-environment compatibility.
+if (process.env.NODE_ENV !== 'production') {
   globalThis.prisma = prisma;
 }
 

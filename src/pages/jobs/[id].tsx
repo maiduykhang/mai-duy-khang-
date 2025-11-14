@@ -1,7 +1,8 @@
 import type { GetStaticPaths, GetStaticProps, InferGetStaticPropsType } from 'next';
 import Link from 'next/link';
 import prisma from '@/lib/prisma';
-import { Job } from '@prisma/client';
+// FIX: Import Prisma namespace to use generated types like Prisma.Job.
+import type { Prisma } from '@prisma/client';
 
 export const getStaticPaths: GetStaticPaths = async () => {
   const jobs = await prisma.job.findMany({
@@ -16,7 +17,8 @@ export const getStaticPaths: GetStaticPaths = async () => {
   return { paths, fallback: 'blocking' };
 };
 
-export const getStaticProps: GetStaticProps<{ job: Job | null }> = async ({ params }) => {
+// FIX: Use Prisma.Job for type annotation.
+export const getStaticProps: GetStaticProps<{ job: Prisma.Job | null }> = async ({ params }) => {
   const id = params?.id as string;
   const job = await prisma.job.findUnique({
     where: { id },

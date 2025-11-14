@@ -1,4 +1,5 @@
-import { Job } from '@prisma/client';
+// FIX: Use Prisma namespace for generated types.
+import type { Prisma } from '@prisma/client';
 import Link from 'next/link';
 
 // Helper function to format date into a "time ago" string
@@ -30,35 +31,34 @@ const SalaryIcon = () => (
 );
 
 type JobCardProps = {
-  job: Job;
+  // FIX: Use Prisma.Job for type annotation.
+  job: Prisma.Job;
 };
 
 export default function JobCard({ job }: JobCardProps) {
   return (
-    <Link href={`/jobs/${job.id}`} passHref legacyBehavior>
-      <a className="bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow flex flex-col justify-between overflow-hidden border cursor-pointer h-full group">
-        <div>
-          <div className="p-5">
-            <h3 className="font-bold text-gray-800 leading-tight group-hover:text-blue-600 text-lg line-clamp-2">
-              {job.title}
-            </h3>
-            <p className="text-sm text-gray-700 font-semibold truncate mt-1">{job.company}</p>
-            <div className="space-y-2 text-sm text-gray-800 mt-4">
-              <p className="flex items-start">
-                <LocationIcon />
-                <span className="line-clamp-1">{job.location}</span>
-              </p>
-              <p className="flex items-center">
-                <SalaryIcon />
-                <span className="font-semibold text-green-600">{job.salary}</span>
-              </p>
-            </div>
+    <Link href={`/jobs/${job.id}`} className="bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow flex flex-col justify-between overflow-hidden border cursor-pointer h-full group">
+      <div>
+        <div className="p-5">
+          <h3 className="font-bold text-gray-800 leading-tight group-hover:text-blue-600 text-lg line-clamp-2">
+            {job.title}
+          </h3>
+          <p className="text-sm text-gray-700 font-semibold truncate mt-1">{job.company}</p>
+          <div className="space-y-2 text-sm text-gray-800 mt-4">
+            <p className="flex items-start">
+              <LocationIcon />
+              <span className="line-clamp-1">{job.location}</span>
+            </p>
+            <p className="flex items-center">
+              <SalaryIcon />
+              <span className="font-semibold text-green-600">{job.salary}</span>
+            </p>
           </div>
         </div>
-        <div className="bg-gray-50 px-5 py-3 border-t flex justify-end items-center text-xs text-gray-500">
-          <span>{timeAgo(job.createdAt)}</span>
-        </div>
-      </a>
+      </div>
+      <div className="bg-gray-50 px-5 py-3 border-t flex justify-end items-center text-xs text-gray-500">
+        <span>{timeAgo(job.createdAt)}</span>
+      </div>
     </Link>
   );
 }

@@ -16,7 +16,8 @@ const Layout = ({ children }: { children: ReactNode }) => {
             <Link href="/jobs" className="text-gray-600 hover:text-blue-600 text-sm font-semibold">
               Việc làm
             </Link>
-            {status === 'authenticated' && (session.user.role === 'ADMIN' || session.user.role === 'MODERATOR') && (
+            {/* FIX: Cast session.user to `any` to access custom 'role' property. */}
+            {status === 'authenticated' && ((session.user as any).role === 'ADMIN' || (session.user as any).role === 'MODERATOR') && (
               <Link href="/admin/jobs" className="text-gray-600 hover:text-blue-600 text-sm font-semibold">
                 Admin
               </Link>

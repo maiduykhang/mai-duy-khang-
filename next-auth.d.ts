@@ -1,24 +1,37 @@
-import { Role } from '@prisma/client';
-// FIX: Removed `DefaultSession` and `DefaultUser` from import to fix circular definition errors. These types are available globally within the `declare module` block.
-import NextAuth from 'next-auth';
-import { JWT } from 'next-auth/jwt';
+// FIX: Redefined interfaces to avoid circular dependency errors from importing DefaultSession/DefaultUser while augmenting the module.
+import type { Prisma } from '@prisma/client';
+import 'next-auth';
+import 'next-auth/jwt';
 
 declare module 'next-auth' {
+  /**
+   * Extends the built-in session to add role and id.
+   */
   interface Session {
     user: {
       id: string;
-      role: Role;
-    } & DefaultSession['user'];
+      role: Prisma.Role;
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+    };
   }
 
-  interface User extends DefaultUser {
-    role: Role;
+  /**
+   * Extends the built-in user model to match what authorize returns.
+   */
+  interface User {
+    id: string;
+    role: Prisma.Role;
+    email?: string;
   }
 }
 
 declare module 'next-auth/jwt' {
+  /**
+   * Extends the built-in JWT to add role. The user ID is in `sub`.
+   */
   interface JWT {
-    uid: string;
-    role: Role;
+    role: Prisma.Role;
   }
 }
